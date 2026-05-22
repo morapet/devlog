@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>devlog</title>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Markdown: markdown-it + plugins -->
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-anchor@9.0.1/dist/markdownItAnchor.umd.js"></script>
+<!-- admonitions are implemented inline in app.js (no dependency) -->
+
+<!-- Syntax highlighting -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" />
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+<!-- Mermaid -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="h-screen flex flex-col bg-slate-50 text-slate-900 antialiased">
+  <header class="h-12 border-b border-slate-200 bg-white px-4 flex items-center gap-4 shrink-0">
+    <div class="font-semibold tracking-tight">devlog</div>
+    <div id="current-project" class="text-sm text-slate-500"></div>
+  </header>
+
+  <main class="flex-1 flex min-h-0">
+    <aside id="sidebar" class="w-56 border-r border-slate-200 bg-white p-2 overflow-y-auto shrink-0"></aside>
+    <section class="flex-1 flex min-w-0">
+      <div id="home-view" class="flex-1 overflow-y-auto bg-slate-50 hidden"></div>
+      <div id="list-pane" class="border-r border-slate-200 flex flex-col min-h-0 shrink-0" style="width: 320px;">
+        <div id="list-tabs" class="h-10 border-b border-slate-200 px-2 flex items-center gap-1 bg-white"></div>
+        <div id="list-filters" class="px-2 py-1.5 border-b border-slate-200 bg-white flex flex-wrap gap-1 text-xs"></div>
+        <div id="list" class="flex-1 overflow-y-auto"></div>
+      </div>
+      <div id="splitter" class="w-1 cursor-col-resize bg-slate-200 hover:bg-blue-300 active:bg-blue-400 shrink-0" title="Drag to resize"></div>
+      <div id="detail" class="flex-1 min-w-0 overflow-y-auto bg-white"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="hidden fixed bottom-4 right-4 px-3 py-2 bg-slate-900 text-white text-sm rounded shadow"></div>
+
+  <!-- Modal for new item -->
+  <div id="modal-overlay" class="hidden fixed inset-0 bg-black/30 z-10 flex items-center justify-center">
+    <div class="bg-white rounded-lg shadow-xl w-[480px] max-h-[80vh] overflow-y-auto p-4" id="modal"></div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

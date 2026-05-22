@@ -1,0 +1,38 @@
+[project]
+name = "devlog"
+version = "0.1.0"
+description = "Local-first developer task/note/link tracker with built-in time tracking, drawio diagrams, and an MCP server."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "Peter Moran", email = "peter@moran.sk" }
+]
+keywords = ["tasks", "notes", "time-tracking", "mcp", "drawio", "markdown"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.28",
+    "mcp>=1.27",
+    "selectolax>=0.4",
+    "uvicorn[standard]>=0.30",
+]
+
+[project.urls]
+Homepage = "https://github.com/morapet/devlog"
+Repository = "https://github.com/morapet/devlog"
+Issues = "https://github.com/morapet/devlog/issues"
+
+[project.scripts]
+devlog = "devlog:main"
+devlog-mcp = "devlog.mcp_server:run"
+
+[build-system]
+requires = ["uv_build>=0.11.15,<0.12.0"]
+build-backend = "uv_build"

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv/
+
+# OS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+
+# Vendored drawio webapp (~120 MB) — fetched via scripts/install-drawio.sh
+src/devlog/web/vendor/drawio/
+
+# Docker-mounted data
+/data/
+
+# macOS tray build artifacts
+clients/mac-tray/.build/

@@ -1,0 +1,22 @@
+.git
+.gitignore
+.venv
+.python-version
+.idea
+.vscode
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+build
+dist
+data
+clients/mac-tray/.build
+
+# vendored drawio is fetched in the image (see Dockerfile)
+src/devlog/web/vendor/drawio/
+
+# misc
+.DS_Store
+README-internal*
+*.swp
