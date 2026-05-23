@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..db import conn, tx, utcnow
+from ..db import conn, tx
 
 router = APIRouter(tags=["sessions"])
 

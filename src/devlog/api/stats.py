@@ -8,7 +8,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from ..db import conn
-from ..stats import clip_session, _tz
+from ..stats import _tz, clip_session
 from .settings import load as load_working_hours
 
 router = APIRouter(prefix="/stats", tags=["stats"])

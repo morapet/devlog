@@ -33,6 +33,12 @@ docker-down: ## Stop the container
 docker-logs: ## Follow container logs
 	docker compose logs -f devlog
 
+backup: ## Hot-backup the local SQLite DB to ~/.local/share/devlog/backups/
+	bash scripts/backup-db.sh --keep 20
+
+smoke: ## Run end-to-end smoke test against http://127.0.0.1:8765
+	uv run python scripts/smoke_test.py
+
 clean: ## Remove build artifacts (keeps ./data and the SQLite DB)
 	rm -rf .venv build dist *.egg-info clients/mac-tray/.build
 	find . -name __pycache__ -type d -prune -exec rm -rf {} +

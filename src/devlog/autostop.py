@@ -7,12 +7,11 @@ that moment and the task is moved from 'doing' back to 'today'.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, time, timedelta, timezone
+from datetime import datetime, time, timezone
 
 from .api.settings import load as load_working_hours
-from .db import conn, tx, utcnow
+from .db import tx, utcnow
 from .stats import _tz
-
 
 TICK_SECONDS = 60
 

@@ -1,4 +1,5 @@
 from typing import Literal, Optional
+
 from pydantic import BaseModel, Field, HttpUrl
 
 TaskStatus = Literal["todo", "today", "doing", "blocked", "someday", "done", "cancelled"]

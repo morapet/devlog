@@ -1,10 +1,9 @@
+import asyncio
 from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-
-import asyncio
 
 from .api.attachments import router as attachments_router
 from .api.items import router as items_router
@@ -13,7 +12,8 @@ from .api.search import router as search_router
 from .api.sessions import router as sessions_router
 from .api.settings import router as settings_router
 from .api.stats import router as stats_router
-from .autostop import auto_stop_loop, check_once as autostop_check_once
+from .autostop import auto_stop_loop
+from .autostop import check_once as autostop_check_once
 from .db import conn
 
 WEB_DIR = Path(__file__).parent / "web"

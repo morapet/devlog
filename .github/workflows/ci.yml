@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: ruff check
+        run: uvx ruff check src
+
+  smoke-test:
+    name: Backend smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Sync deps
+        run: uv sync --frozen
+      - name: Start backend in background
+        run: |
+          DEVLOG_DATA_DIR=$RUNNER_TEMP/devlog-data uv run devlog > server.log 2>&1 &
+          echo $! > server.pid
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8765/health >/dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:8765/health || (cat server.log; exit 1)
+      - name: Run end-to-end smoke
+        run: uv run python scripts/smoke_test.py
+      - name: Stop backend
+        if: always()
+        run: kill $(cat server.pid) || true
+      - name: Server log
+        if: always()
+        run: cat server.log || true
+
+  mac-tray:
+    name: macOS tray build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift --version
+        run: swift --version
+      - name: Build tray app
+        working-directory: clients/mac-tray
+        run: ./build.sh
+
+  docker-build:
+    name: Docker build (sanity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image (no push, no drawio for speed)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: devlog:ci
+          build-args: |
+            INSTALL_DRAWIO=0
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Smoke-run container
+        run: |
+          docker run -d --name devlog-ci -p 8765:8765 devlog:ci
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8765/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8765/health
+          docker logs devlog-ci
+          docker rm -f devlog-ci

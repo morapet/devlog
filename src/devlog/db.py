@@ -3,7 +3,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 
-from .config import db_path, data_dir
+from .config import data_dir, db_path
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS projects (
