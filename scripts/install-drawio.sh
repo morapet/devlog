@@ -22,9 +22,11 @@ curl -sLf "https://github.com/jgraph/drawio/archive/refs/tags/${VERSION}.tar.gz"
 
 echo "Extracting…"
 tar -xzf "$TMP/drawio.tar.gz" -C "$TMP"
-SRC="$(find "$TMP" -maxdepth 3 -type d -path '*/src/main/webapp' | head -1)"
+# GitHub source tarballs unpack to drawio-<version>/src/main/webapp (depth 4 from $TMP).
+SRC="$(find "$TMP" -mindepth 4 -maxdepth 5 -type d -name webapp | head -1)"
 if [ -z "$SRC" ]; then
-    echo "Could not find webapp/ inside the archive." >&2
+    echo "Could not find webapp/ inside the archive. Layout was:" >&2
+    find "$TMP" -maxdepth 4 -type d | head -20 >&2
     exit 1
 fi
 
