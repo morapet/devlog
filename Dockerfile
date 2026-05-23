@@ -17,11 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Install deps first so they're cached when only source changes.
+# Step 1 — install only the third-party deps (no project), so this layer is cached
+# until pyproject.toml / uv.lock change. --no-install-project skips building the
+# devlog package itself (its source isn't in the image yet).
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev --python /usr/local/bin/python
+RUN uv sync --frozen --no-dev --no-install-project --python /usr/local/bin/python
 
-# App source.
+# Step 2 — copy app source.
 COPY src/ ./src/
 COPY scripts/ ./scripts/
 
@@ -31,7 +33,7 @@ RUN if [ "$INSTALL_DRAWIO" = "1" ]; then \
         bash scripts/install-drawio.sh ; \
     fi
 
-# Re-sync so the project itself is installed and console scripts work.
+# Step 3 — install the devlog package now that its source is present.
 RUN uv sync --frozen --no-dev --python /usr/local/bin/python
 
 ENV DEVLOG_HOST=0.0.0.0 \
