@@ -10,7 +10,55 @@ Local-first developer task / note / link tracker. Single SQLite file, FastAPI ba
 
 ## Quick start
 
-### Option A — Docker (one command, no Python install)
+### Option A — Pull the prebuilt image from GHCR (fastest, no build, no clone)
+
+GitHub Actions publishes a multi-arch image (`linux/amd64` + `linux/arm64`) to **`ghcr.io/morapet/devlog`** on every push to `main` and on `v*.*.*` tags. drawio is baked in.
+
+```bash
+# one-shot run with a host volume for data
+mkdir -p ~/devlog-data
+docker run -d --name devlog \
+    -p 8765:8765 \
+    -v ~/devlog-data:/data \
+    --restart unless-stopped \
+    ghcr.io/morapet/devlog:latest
+open http://localhost:8765
+```
+
+Update later:
+```bash
+docker pull ghcr.io/morapet/devlog:latest
+docker rm -f devlog
+# …then re-run the docker run command above
+```
+
+Or use `docker compose` with the published image (drop into a new dir as `docker-compose.yml`):
+```yaml
+services:
+  devlog:
+    image: ghcr.io/morapet/devlog:latest
+    container_name: devlog
+    ports: ["8765:8765"]
+    volumes: ["./data:/data"]
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+```
+
+Available tags:
+
+| Tag | Source |
+|---|---|
+| `latest` | most recent push to `main` |
+| `main` | most recent push to `main` |
+| `v1.2.3`, `1.2`, `1` | semver from a `v*.*.*` git tag |
+| `sha-abc1234` | a specific commit |
+
+> Note: GHCR packages start as private. After the first publish, go to https://github.com/users/morapet/packages/container/devlog → Package settings → "Change visibility" → Public, so others can `docker pull` without auth.
+
+### Option B — Build the Docker image from source
 
 ```bash
 git clone https://github.com/morapet/devlog.git
@@ -21,7 +69,7 @@ open http://localhost:8765
 
 Data persists in `./data/` (a SQLite WAL file). Stop with `make docker-down`.
 
-### Option B — Local Python (with [uv](https://docs.astral.sh/uv/))
+### Option C — Local Python (with [uv](https://docs.astral.sh/uv/))
 
 ```bash
 git clone https://github.com/morapet/devlog.git
@@ -34,7 +82,7 @@ open http://127.0.0.1:8765
 
 Data goes to `~/.local/share/devlog/devlog.db` (or `$XDG_DATA_HOME/devlog/` if set).
 
-### Option C — Install as a CLI tool
+### Option D — Install as a CLI tool
 
 ```bash
 uv tool install git+https://github.com/morapet/devlog.git
