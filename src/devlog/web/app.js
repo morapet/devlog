@@ -1375,17 +1375,42 @@ function clearSel() { state.selected = null; state.selectedId = null; }
 // (Header search and global "+ New" buttons removed — search lives inside Home, "+ New" lives in the sidebar.)
 
 function openNewItemModal() {
+  const TABS = ["task", "note", "link"];
   let tab = "task";
   let projectId = state.scopeProjectId ?? state.currentProjectId ?? state.projects[0]?.id ?? null;
 
   const overlay = $("#modal-overlay");
   const m = $("#modal");
 
+  // Tab / Shift+Tab cycles Task → Note → Link, but only when focus is NOT
+  // inside an input/textarea/select (so form-field Tab navigation still works).
+  const onKeyDown = (e) => {
+    if (overlay.classList.contains("hidden")) return;
+    if (e.key !== "Tab" || e.metaKey || e.ctrlKey || e.altKey) return;
+    const a = document.activeElement;
+    const isField = a && ["INPUT", "TEXTAREA", "SELECT"].includes(a.tagName);
+    if (isField) return; // keep native field tabbing
+    e.preventDefault();
+    const i = TABS.indexOf(tab);
+    tab = TABS[e.shiftKey ? (i - 1 + TABS.length) % TABS.length : (i + 1) % TABS.length];
+    render();
+  };
+  document.addEventListener("keydown", onKeyDown);
+  // Tear down the listener when the overlay is hidden by anything.
+  const cleanup = new MutationObserver(() => {
+    if (overlay.classList.contains("hidden")) {
+      document.removeEventListener("keydown", onKeyDown);
+      cleanup.disconnect();
+    }
+  });
+  cleanup.observe(overlay, { attributes: true, attributeFilter: ["class"] });
+
   const render = () => {
     m.replaceChildren();
     m.append(el("div", { class: "flex items-center gap-2 mb-3" },
-      ...["task", "note", "link"].map((t) => el("button", {
+      ...TABS.map((t) => el("button", {
         class: "tab-btn " + (tab === t ? "active" : ""),
+        title: `Switch tab — Tab / Shift+Tab cycle`,
         onclick: () => { tab = t; render(); },
       }, t)),
       el("button", {
@@ -1611,6 +1636,23 @@ function openProjectModal(project) {
 // Close modal on overlay click
 $("#modal-overlay").addEventListener("click", (e) => {
   if (e.target.id === "modal-overlay") $("#modal-overlay").classList.add("hidden");
+});
+
+// ESC closes any open modal (capture, project, history, drawing preview).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const overlay = $("#modal-overlay");
+  if (overlay && !overlay.classList.contains("hidden")) {
+    e.preventDefault();
+    overlay.classList.add("hidden");
+    return;
+  }
+  // Also dismiss the full-screen drawio drawing editor, if open.
+  const drawingOverlay = document.querySelector(".fixed.inset-0.z-20.bg-black\\/40");
+  if (drawingOverlay) {
+    // Trigger its own close path so it tears down listeners cleanly.
+    drawingOverlay.querySelector('[data-action="close"]')?.click();
+  }
 });
 
 // ---------- inline drawing rendering ----------
