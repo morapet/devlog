@@ -509,9 +509,18 @@ function renderDetail() {
   const actions = renderActions(it);
   const refs = renderRefs(it);
 
-  d.append(header, meta, renderTagsEditor(it));
-  if (it.kind === "task") d.append(renderTimeBlock(it));
-  d.append(editor, actions, refs);
+  d.append(header);
+  if (!state.focusMode) d.append(meta, renderTagsEditor(it));
+  if (!state.focusMode && it.kind === "task") d.append(renderTimeBlock(it));
+  d.append(editor);
+  if (!state.focusMode) d.append(actions);
+  d.append(refs);
+}
+
+function toggleFocusMode() {
+  state.focusMode = !state.focusMode;
+  try { localStorage.setItem("focusMode", JSON.stringify(state.focusMode)); } catch {}
+  renderDetail();
 }
 
 function renderTagsEditor(it) {
