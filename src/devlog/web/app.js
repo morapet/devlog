@@ -826,7 +826,14 @@ function renderEditor(it, bodyVal) {
     renderMarkdownInto(ro, bodyVal);
     ro.addEventListener("click", async (e) => {
       const drawingImg = e.target.closest("[data-edit-drawing]");
-      if (drawingImg) return; // no editing in focus mode
+      if (drawingImg) {
+        // Focus mode: clicking a drawing opens a zoomed lightbox view
+        // (drawio editing stays available in edit mode only).
+        e.preventDefault();
+        const attId = Number(drawingImg.dataset.editDrawing);
+        if (attId) openDrawingLightbox(attId);
+        return;
+      }
       const idAnchor = e.target.closest("[data-ref]");
       if (idAnchor) {
         e.preventDefault();
@@ -1758,6 +1765,93 @@ async function loadInlineDrawing(box, attId) {
 
 function invalidateDrawingCache(attId) {
   _svgCache.delete(attId);
+}
+
+// Lightbox: large read-only viewer for a drawing. Opened from focus mode.
+async function openDrawingLightbox(attId) {
+  // Backdrop. Click outside the frame OR press Esc to close.
+  const overlay = document.createElement("div");
+  overlay.className = "fixed inset-0 z-30 bg-black/80 flex items-center justify-center p-6 cursor-zoom-out";
+  const frame = document.createElement("div");
+  frame.className = "bg-white rounded-lg shadow-2xl flex flex-col cursor-default overflow-hidden";
+  frame.style.width  = "min(95vw, 1600px)";
+  frame.style.height = "min(95vh, 1000px)";
+  frame.addEventListener("click", (e) => e.stopPropagation());
+
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  document.addEventListener("keydown", onKey);
+  overlay.addEventListener("click", close);
+
+  // Title bar
+  const bar = document.createElement("div");
+  bar.className = "h-10 px-3 border-b border-slate-200 flex items-center gap-2 text-sm shrink-0";
+  bar.innerHTML = `<span class="text-slate-500">Drawing #${attId}</span><div class="flex-1"></div>`;
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "text-slate-400 hover:text-slate-800 text-xl leading-none w-6 h-6";
+  closeBtn.textContent = "✕";
+  closeBtn.addEventListener("click", close);
+  bar.appendChild(closeBtn);
+  frame.appendChild(bar);
+
+  // SVG container — Shadow DOM isolation + forced full-width scaling.
+  const box = document.createElement("div");
+  box.className = "flex-1 min-h-0 flex items-center justify-center bg-slate-50 overflow-auto p-4";
+  frame.appendChild(box);
+  overlay.appendChild(frame);
+  document.body.appendChild(overlay);
+
+  // Fetch (or reuse cached) SVG, then render into a shadow root with CSS
+  // that scales it to the container instead of its intrinsic pixel size.
+  let svg = _svgCache.get(attId);
+  if (svg == null) {
+    try {
+      const r = await fetch(`/attachments/${attId}/svg`);
+      svg = await r.text();
+      _svgCache.set(attId, svg);
+    } catch (e) {
+      box.textContent = "Failed to load drawing: " + e.message;
+      return;
+    }
+  }
+  const host = document.createElement("div");
+  host.style.width = "100%";
+  host.style.height = "100%";
+  box.appendChild(host);
+  const shadow = host.attachShadow({ mode: "open" });
+  shadow.innerHTML = `
+    <style>
+      :host { display: block; width: 100%; height: 100%; }
+      svg {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100%;
+        max-height: 100%;
+        display: block;
+        background: white;
+        /* preserve aspect ratio while filling the box */
+        object-fit: contain;
+      }
+      foreignObject, foreignObject * {
+        font-family: Helvetica, Arial, sans-serif;
+        color: #000;
+        background: transparent;
+      }
+      foreignObject div { line-height: 1.2; }
+    </style>
+    ${_sanitizeDrawioSvg(svg)}
+  `;
+  // Ensure the SVG itself doesn't carry pixel-locked width/height attrs that
+  // override our CSS (drawio exports them by default).
+  const svgEl = shadow.querySelector("svg");
+  if (svgEl) {
+    svgEl.removeAttribute("width");
+    svgEl.removeAttribute("height");
+    svgEl.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  }
 }
 
 // ---------- drawio integration ----------
