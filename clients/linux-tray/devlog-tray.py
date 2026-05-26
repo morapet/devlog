@@ -129,18 +129,28 @@ class DevlogTray:
         )
         self.ind.set_status(AppIndicator.IndicatorStatus.ACTIVE)
         self.ind.set_title("Devlog")
-        # initial menu so the indicator shows up before the first fetch returns
-        self.ind.set_menu(self._loading_menu())
+        # Keep a strong reference to the current menu (and to all the lambda
+        # closures it contains). Without this, the menu can be GC'd shortly
+        # after set_menu() and clicks no longer dispatch through dbusmenu.
+        self._menu = self._loading_menu()
+        self.ind.set_menu(self._menu)
         self.schedule_refresh()
         GLib.timeout_add_seconds(REFRESH_SECONDS, self._tick)
 
+    def _mk_item(self, label: str, action=None):
+        """Create a Gtk.MenuItem using the canonical constructor and wire the
+        activate signal (more reliable through dbusmenu than the kwarg form)."""
+        item = Gtk.MenuItem.new_with_label(label)
+        if action is not None:
+            item.connect("activate", lambda _w: action())
+        return item
+
     def _loading_menu(self) -> Gtk.Menu:
         m = Gtk.Menu()
-        item = Gtk.MenuItem(label="Connecting…"); item.set_sensitive(False)
-        m.append(item)
-        q = Gtk.MenuItem(label="Quit")
-        q.connect("activate", lambda *_: Gtk.main_quit())
-        m.append(Gtk.SeparatorMenuItem()); m.append(q)
+        loading = self._mk_item("Connecting…"); loading.set_sensitive(False)
+        m.append(loading)
+        m.append(Gtk.SeparatorMenuItem())
+        m.append(self._mk_item("Quit", Gtk.main_quit))
         m.show_all()
         return m
 
@@ -163,74 +173,73 @@ class DevlogTray:
     def _rebuild(self, projects, current, doing, today, bookmarks) -> bool:
         connected = projects is not None
         menu = Gtk.Menu()
-        proj_by_id = {p["id"]: p for p in projects}
+        proj_by_id = {p["id"]: p for p in (projects or [])}
         cur_id = current["id"] if current else None
 
         if not connected:
-            it = Gtk.MenuItem(label="Backend offline"); it.set_sensitive(False)
-            menu.append(it); menu.append(Gtk.SeparatorMenuItem())
+            offline = self._mk_item("Backend offline"); offline.set_sensitive(False)
+            menu.append(offline)
+            menu.append(Gtk.SeparatorMenuItem())
         else:
             # ── Doing (top-level) ──
             if doing:
                 d = doing[0]
-                top = Gtk.MenuItem(label="▶ " + task_label(d))
+                d_id = d["id"]
+                top = self._mk_item("▶ " + task_label(d))
                 sub = Gtk.Menu()
-                pause = Gtk.MenuItem(label="⏸ Pause (move to Today)")
-                pause.connect("activate", lambda *_: self._update_task(d["id"], "today"))
-                sub.append(pause)
-                done = Gtk.MenuItem(label="✓ Mark done")
-                done.connect("activate", lambda *_: self._mark_done(d["id"]))
-                sub.append(done)
+                sub.append(self._mk_item("⏸ Pause (move to Today)",
+                                         lambda did=d_id: self._update_task(did, "today")))
+                sub.append(self._mk_item("✓ Mark done",
+                                         lambda did=d_id: self._mark_done(did)))
                 top.set_submenu(sub)
                 menu.append(top)
                 menu.append(Gtk.SeparatorMenuItem())
 
             # ── Bookmarks per project ──
             b_by: dict[int, list] = {}
-            for b in bookmarks:
+            for b in bookmarks or []:
                 b_by.setdefault(b["project_id"], []).append(b)
             if b_by:
-                h = Gtk.MenuItem(label="Bookmarks"); h.set_sensitive(False)
+                h = self._mk_item("Bookmarks"); h.set_sensitive(False)
                 menu.append(h)
                 for pid in sorted(b_by.keys(), key=lambda x: project_sort_key(x, cur_id, proj_by_id)):
                     p = proj_by_id.get(pid)
                     if not p:
                         continue
                     suffix = " (current)" if pid == cur_id else ""
-                    pitem = Gtk.MenuItem(label=f"  {p['name']}{suffix} · {len(b_by[pid])}")
+                    pitem = self._mk_item(f"  {p['name']}{suffix} · {len(b_by[pid])}")
                     sub = Gtk.Menu()
                     for link in b_by[pid][:25]:
-                        li = Gtk.MenuItem(label=link_label(link))
-                        li.connect("activate", lambda _w, u=link.get("url"): self._open(u))
-                        sub.append(li)
+                        url = link.get("url")
+                        sub.append(self._mk_item(link_label(link),
+                                                 lambda u=url: self._open(u)))
                     pitem.set_submenu(sub)
                     menu.append(pitem)
                 menu.append(Gtk.SeparatorMenuItem())
 
             # ── Today per project ──
             t_by: dict[int, list] = {}
-            for t in today:
+            for t in today or []:
                 t_by.setdefault(t["project_id"], []).append(t)
             if t_by:
                 total = sum(len(v) for v in t_by.values())
-                h = Gtk.MenuItem(label=f"Today ({total})"); h.set_sensitive(False)
+                h = self._mk_item(f"Today ({total})"); h.set_sensitive(False)
                 menu.append(h)
                 for pid in sorted(t_by.keys(), key=lambda x: project_sort_key(x, cur_id, proj_by_id)):
                     p = proj_by_id.get(pid)
                     if not p:
                         continue
                     suffix = " (current)" if pid == cur_id else ""
-                    pitem = Gtk.MenuItem(label=f"  {p['name']}{suffix} · {len(t_by[pid])}")
+                    pitem = self._mk_item(f"  {p['name']}{suffix} · {len(t_by[pid])}")
                     sub = Gtk.Menu()
                     for task in t_by[pid][:20]:
-                        ti = Gtk.MenuItem(label=task_label(task))
+                        tid = task["id"]
+                        ti = self._mk_item(task_label(task))
                         actions = Gtk.Menu()
-                        start = Gtk.MenuItem(label="▶ Start (mark doing)")
-                        start.connect("activate", lambda _w, tid=task["id"]: self._mark_doing(tid))
-                        actions.append(start)
-                        d2 = Gtk.MenuItem(label="✓ Mark done")
-                        d2.connect("activate", lambda _w, tid=task["id"]: self._mark_done(tid))
-                        actions.append(d2)
+                        actions.append(self._mk_item("▶ Start (mark doing)",
+                                                     lambda t_=tid: self._mark_doing(t_)))
+                        actions.append(self._mk_item("✓ Mark done",
+                                                     lambda t_=tid: self._mark_done(t_)))
                         ti.set_submenu(actions)
                         sub.append(ti)
                     pitem.set_submenu(sub)
@@ -238,24 +247,18 @@ class DevlogTray:
                 menu.append(Gtk.SeparatorMenuItem())
 
         # ── Actions ──
-        cap = Gtk.MenuItem(label="Capture (Web UI)…")
-        cap.connect("activate", lambda *_: self._open(BASE + "/"))
-        menu.append(cap)
-        np = Gtk.MenuItem(label="New project (Web UI)…")
-        np.connect("activate", lambda *_: self._open(BASE + "/"))
-        menu.append(np)
-        web = Gtk.MenuItem(label="Open Web UI")
-        web.connect("activate", lambda *_: self._open(BASE + "/"))
-        menu.append(web)
+        menu.append(self._mk_item("Capture (Web UI)…",      lambda: self._open(BASE + "/")))
+        menu.append(self._mk_item("New project (Web UI)…",  lambda: self._open(BASE + "/")))
+        menu.append(self._mk_item("Open Web UI",            lambda: self._open(BASE + "/")))
         menu.append(Gtk.SeparatorMenuItem())
-        ref = Gtk.MenuItem(label="Refresh")
-        ref.connect("activate", lambda *_: self.schedule_refresh())
-        menu.append(ref)
-        q = Gtk.MenuItem(label="Quit Devlog")
-        q.connect("activate", lambda *_: Gtk.main_quit())
-        menu.append(q)
+        menu.append(self._mk_item("Refresh",                self.schedule_refresh))
+        menu.append(self._mk_item("Quit Devlog",            Gtk.main_quit))
 
         menu.show_all()
+        # Replace the current menu and KEEP A REFERENCE so its handler closures
+        # aren't garbage-collected (a common reason indicator clicks silently
+        # do nothing after the first refresh cycle).
+        self._menu = menu
         self.ind.set_menu(menu)
 
         # Status-bar label next to the icon (works in Ayatana, ignored elsewhere).
@@ -271,23 +274,27 @@ class DevlogTray:
     def _open(self, url: str) -> None:
         if not url:
             return
+        print(f"[devlog-tray] open: {url}", flush=True)
         try:
             subprocess.Popen(["xdg-open", url],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except FileNotFoundError:
-            pass
+            print("[devlog-tray] xdg-open not found — install xdg-utils", flush=True)
 
     def _update_task(self, task_id: int, status: str) -> None:
+        print(f"[devlog-tray] PATCH /tasks/{task_id} status={status}", flush=True)
         threading.Thread(target=lambda: (api_patch(f"/tasks/{task_id}", {"status": status}),
                                          GLib.idle_add(self.schedule_refresh)),
                          daemon=True).start()
 
     def _mark_done(self, task_id: int) -> None:
+        print(f"[devlog-tray] POST /tasks/{task_id}/done", flush=True)
         threading.Thread(target=lambda: (api_post(f"/tasks/{task_id}/done"),
                                          GLib.idle_add(self.schedule_refresh)),
                          daemon=True).start()
 
     def _mark_doing(self, task_id: int) -> None:
+        print(f"[devlog-tray] POST /tasks/{task_id}/doing", flush=True)
         threading.Thread(target=lambda: (api_post(f"/tasks/{task_id}/doing"),
                                          GLib.idle_add(self.schedule_refresh)),
                          daemon=True).start()
