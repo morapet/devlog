@@ -39,6 +39,10 @@ const state = {
   kind: "task",           // task | note | link
   statusFilter: null,     // (kept for pseudo-views like Today/Doing)
   search: "",
+  focusMode: (() => {
+    try { return JSON.parse(localStorage.getItem("focusMode") || "false"); }
+    catch { return false; }
+  })(),
   // List view controls
   sortBy: "status",       // 'status' | 'priority' | 'updated' | 'created' | 'title' | 'time_spent' | 'due'
   groupBy: "none",        // 'none' | 'status' | 'priority' | 'tag'
@@ -475,13 +479,23 @@ function renderDetail() {
       proj ? el("span", {}, "·") : null,
       proj ? el("span", {}, proj.name) : null,
       el("span", { class: "ml-auto" }, "updated " + fmtDate(it.updatedAt ?? it.updated_at)),
+      el("button", {
+        class: "ml-3 px-2 py-0.5 rounded border " +
+          (state.focusMode
+            ? "border-amber-300 bg-amber-100 text-amber-800"
+            : "border-slate-300 text-slate-600 hover:bg-slate-100"),
+        title: state.focusMode ? "Exit focus mode" : "Focus mode — read-only, hides editor",
+        onclick: toggleFocusMode,
+      }, state.focusMode ? "✏ Edit" : "👁 Focus"),
     ),
     it.kind !== "link"
-      ? el("input", {
-          type: "text", value: titleVal, placeholder: "Title",
-          class: "mt-2 w-full text-2xl font-semibold border-0 focus:outline-none focus:ring-0 px-0",
-          oninput: (e) => { setDraftQuiet(it.id, "title", e.target.value); },
-        })
+      ? (state.focusMode
+          ? el("div", { class: "mt-2 text-2xl font-semibold text-slate-900" }, titleVal || "(untitled)")
+          : el("input", {
+              type: "text", value: titleVal, placeholder: "Title",
+              class: "mt-2 w-full text-2xl font-semibold border-0 focus:outline-none focus:ring-0 px-0",
+              oninput: (e) => { setDraftQuiet(it.id, "title", e.target.value); },
+            }))
       : el("div", { class: "mt-2" },
           el("a", { href: it.url, target: "_blank", rel: "noopener", class: "text-xl font-semibold text-blue-700 hover:underline" },
             (it.display_label || "").trim() || it.title || it.url),
@@ -793,6 +807,41 @@ function label(text, child) {
 
 function renderEditor(it, bodyVal) {
   const outer = el("div", { class: "px-6 py-3" });
+
+  // ── Focus mode: render preview only, full width ──
+  if (state.focusMode) {
+    const ro = el("div", {
+      class: "prose-body border border-slate-200 rounded p-5 bg-white overflow-auto min-h-[300px] max-w-3xl mx-auto",
+      id: "md-preview",
+    });
+    renderMarkdownInto(ro, bodyVal);
+    ro.addEventListener("click", async (e) => {
+      const drawingImg = e.target.closest("[data-edit-drawing]");
+      if (drawingImg) return; // no editing in focus mode
+      const idAnchor = e.target.closest("[data-ref]");
+      if (idAnchor) {
+        e.preventDefault();
+        const id = Number(idAnchor.dataset.ref);
+        if (id) selectItem(id);
+        return;
+      }
+      const titleAnchor = e.target.closest("[data-ref-title]");
+      if (titleAnchor) {
+        e.preventDefault();
+        const hit = await resolveTitleRef(titleAnchor.dataset.refTitle);
+        if (hit) selectItem(hit.id);
+      }
+    });
+    // Hydrate any #N title decorations.
+    const ids = extractIdRefs(bodyVal);
+    if (ids.length) {
+      ensureTitlesFor(ids).then((changed) => {
+        if (changed && document.body.contains(ro)) renderMarkdownInto(ro, bodyVal);
+      });
+    }
+    outer.append(ro);
+    return outer;
+  }
 
   // Tiny toolbar above the editor for inserts (drawings, etc.)
   const toolbar = el("div", { class: "mb-2 flex items-center gap-2 text-xs" },
