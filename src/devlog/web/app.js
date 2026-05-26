@@ -408,7 +408,7 @@ function groupItems(items, by) {
 function renderListRow(item) {
   const proj = state.projects.find((p) => p.id === item.projectId || p.id === item.project_id);
   const projectId = item.projectId ?? item.project_id;
-  const title = item.title || (item.url ? hostOf(item.url) : item.body?.slice(0, 60) || "(untitled)");
+  const title = (item.display_label || "").trim() || item.title || (item.url ? hostOf(item.url) : item.body?.slice(0, 60) || "(untitled)");
   const sub = item.kind === "link" ? item.url : (item.body || "").trim().split("\n")[0].slice(0, 120);
   const chips = [];
   if (item.kind === "task" && item.status) chips.push(el("span", { class: "chip " + item.status }, item.status));
@@ -483,7 +483,8 @@ function renderDetail() {
           oninput: (e) => { setDraftQuiet(it.id, "title", e.target.value); },
         })
       : el("div", { class: "mt-2" },
-          el("a", { href: it.url, target: "_blank", rel: "noopener", class: "text-xl font-semibold text-blue-700 hover:underline" }, it.title || it.url),
+          el("a", { href: it.url, target: "_blank", rel: "noopener", class: "text-xl font-semibold text-blue-700 hover:underline" },
+            (it.display_label || "").trim() || it.title || it.url),
           el("div", { class: "text-xs text-slate-500 mt-0.5 truncate" }, it.url),
           it.link_description ? el("div", { class: "text-sm text-slate-600 mt-2" }, it.link_description) : null,
         ),
@@ -754,6 +755,15 @@ function renderMeta(it, draft) {
     }
   } else if (it.kind === "link") {
     const is_read = draft.is_read ?? it.is_read;
+    const display_label = draft.display_label ?? it.display_label ?? "";
+    row.append(label("Label",
+      el("input", {
+        type: "text", value: display_label,
+        placeholder: "Optional — shown instead of title",
+        class: "border border-slate-300 rounded px-2 py-1 text-sm w-64",
+        oninput: (e) => setDraftQuiet(it.id, "display_label", e.target.value),
+      })
+    ));
     row.append(label("",
       el("label", { class: "flex items-center gap-1 cursor-pointer" },
         el("input", {
@@ -1440,13 +1450,19 @@ function openNewItemModal() {
 
   const renderLinkForm = () => {
     const u = el("input", { type: "url", class: "mt-2 w-full border border-slate-300 rounded px-2 py-1.5 text-sm", placeholder: "https://…" });
+    const lbl = el("input", { type: "text", class: "mt-2 w-full border border-slate-300 rounded px-2 py-1.5 text-sm", placeholder: "Label (optional — shown instead of title)" });
     const ann = el("textarea", { class: "mt-2 w-full text-sm border border-slate-300 rounded p-2 min-h-[80px]", placeholder: "Annotation (optional)" });
-    m.append(u, ann,
+    m.append(u, lbl, ann,
       el("div", { class: "mt-3 flex justify-end gap-2" },
         el("button", { class: "px-3 py-1.5 text-sm text-slate-600 hover:underline", onclick: () => overlay.classList.add("hidden") }, "Cancel"),
         el("button", { class: "px-3 py-1.5 text-sm bg-slate-900 text-white rounded hover:bg-slate-700", onclick: async () => {
           try {
-            await api("/links", { method: "POST", body: JSON.stringify({ project_id: projectId, url: u.value, annotation: ann.value || null }) });
+            await api("/links", { method: "POST", body: JSON.stringify({
+              project_id: projectId,
+              url: u.value,
+              display_label: lbl.value.trim() || null,
+              annotation: ann.value || null,
+            }) });
             overlay.classList.add("hidden"); reloadList(); toast("Created");
           } catch (e) { toast(e.message); }
         } }, "Create"))
@@ -2089,7 +2105,7 @@ function renderSearchHit(item) {
 
 function pinnedTile(link) {
   const host = (() => { try { return new URL(link.url).host.replace(/^www\./, ""); } catch { return link.url; } })();
-  const label = link.title || host;
+  const label = (link.display_label || "").trim() || link.title || host;
   const open = (e) => { if (e.target.tagName !== "BUTTON") window.open(link.url, "_blank", "noopener"); };
   return el("div", {
     class: "group relative flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded hover:border-slate-400 hover:shadow-sm cursor-pointer max-w-[260px]",

@@ -74,6 +74,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+// Produce a compact menu label. Priority:
+//   1. user-set display_label (no truncation — users picked it deliberately)
+//   2. fetched title (clipped to 40 chars)
+//   3. URL host
+private func shortLabel(for item: Item) -> String {
+    if let label = item.displayLabel?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+        return label
+    }
+    let raw = (item.title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+    if !raw.isEmpty {
+        return truncate(raw, max: 40)
+    }
+    if let s = item.url, let host = URL(string: s)?.host {
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+    return item.url ?? "(untitled)"
+}
+
+private func truncate(_ s: String, max: Int) -> String {
+    s.count <= max ? s : String(s.prefix(max - 1)) + "…"
+}
+
 struct MenuContent: View {
     @EnvironmentObject var app: AppState
     @Environment(\.openWindow) private var openWindow
@@ -83,27 +105,51 @@ struct MenuContent: View {
             if !app.connected {
                 Text("Backend offline").foregroundStyle(.secondary)
             } else {
+                // ───── Doing — top-level (no section header) ─────
                 if let d = app.doing {
-                    Section("Doing") {
-                        Button(action: { app.markDone(d.id) }) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                Text(d.title ?? "(untitled)")
-                                Spacer()
-                                Text("✓").foregroundStyle(.secondary)
-                            }
-                        }
+                    Menu("▶ " + shortLabel(for: d)) {
+                        Button("⏸ Pause (move to Today)") { app.pauseDoing(d.id) }
+                        Button("✓ Mark done")            { app.markDone(d.id) }
                     }
+                    Divider()
                 }
-                if !app.today.isEmpty {
-                    Section("Today (\(app.today.count))") {
-                        ForEach(app.today.prefix(10)) { item in
-                            Menu(item.title ?? "(untitled)") {
-                                Button("Start (mark doing)") { app.markDoing(item.id) }
-                                Button("Mark done") { app.markDone(item.id) }
+
+                // ───── Bookmarks (per project) ─────
+                if !app.bookmarksByProject.isEmpty {
+                    Section("Bookmarks") {
+                        ForEach(app.bookmarksByProject) { group in
+                            let suffix = group.project.id == app.currentProject?.id ? " (current)" : ""
+                            Menu("\(group.project.name)\(suffix) · \(group.links.count)") {
+                                ForEach(group.links.prefix(25)) { link in
+                                    Button(shortLabel(for: link)) {
+                                        if let s = link.url, let url = URL(string: s) {
+                                            NSWorkspace.shared.open(url)
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
+                    Divider()
+                }
+
+                // ───── Today (per project) ─────
+                if !app.todayByProject.isEmpty {
+                    let totalToday = app.todayByProject.reduce(0) { $0 + $1.items.count }
+                    Section("Today (\(totalToday))") {
+                        ForEach(app.todayByProject) { group in
+                            let suffix = group.project.id == app.currentProject?.id ? " (current)" : ""
+                            Menu("\(group.project.name)\(suffix) · \(group.items.count)") {
+                                ForEach(group.items.prefix(20)) { item in
+                                    Menu(shortLabel(for: item)) {
+                                        Button("▶ Start (mark doing)") { app.markDoing(item.id) }
+                                        Button("✓ Mark done")          { app.markDone(item.id) }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Divider()
                 }
             }
         }
@@ -116,37 +162,12 @@ struct MenuContent: View {
         }
         .keyboardShortcut("n")
 
-        Menu("Project: \(app.currentProject?.name ?? "—")") {
-            ForEach(app.projects) { p in
-                Button(action: { app.setCurrent(p) }) {
-                    HStack {
-                        Text(p.name)
-                        if app.currentProject?.id == p.id {
-                            Spacer()
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                }
-            }
-            if !app.projects.isEmpty { Divider() }
-            Button("New project…") {
-                openWindow(id: "new-project")
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            Button("Manage projects…") {
-                if let url = URL(string: "http://127.0.0.1:8765/") {
-                    NSWorkspace.shared.open(url)
-                }
-            }
+        Button("New project…") {
+            openWindow(id: "new-project")
+            NSApp.activate(ignoringOtherApps: true)
         }
-
         Button("Open Web UI") {
             if let url = URL(string: "http://127.0.0.1:8765/") {
-                NSWorkspace.shared.open(url)
-            }
-        }
-        Button("API Docs") {
-            if let url = URL(string: "http://127.0.0.1:8765/docs") {
                 NSWorkspace.shared.open(url)
             }
         }

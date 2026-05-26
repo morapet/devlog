@@ -15,6 +15,9 @@ dev: ## Run the backend locally (http://127.0.0.1:8765)
 tray: ## Build and launch the macOS tray app (requires Xcode CLT)
 	cd clients/mac-tray && ./build.sh && open .build/Devlog.app
 
+tray-linux: ## Install the Linux tray (apt deps + ~/.local/bin launcher + autostart)
+	bash clients/linux-tray/install.sh
+
 mcp: ## Run the devlog MCP server over stdio (for Claude Desktop / Code)
 	uv run devlog-mcp
 

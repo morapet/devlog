@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS items (
     url                TEXT,
     link_description   TEXT,
     favicon_url        TEXT,
-    is_read            INTEGER NOT NULL DEFAULT 0
+    is_read            INTEGER NOT NULL DEFAULT 0,
+    display_label      TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_items_project_kind ON items(project_id, kind);
@@ -163,6 +164,8 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "is_pinned" not in cols:
         c.execute("ALTER TABLE items ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0")
         c.execute("CREATE INDEX IF NOT EXISTS idx_items_pinned ON items(is_pinned) WHERE is_pinned = 1")
+    if "display_label" not in cols:
+        c.execute("ALTER TABLE items ADD COLUMN display_label TEXT")
 
     # Rebuild items_fts if it doesn't include the 'tags' column.
     fts_cols: set[str] = set()

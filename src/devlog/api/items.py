@@ -122,11 +122,11 @@ async def create_link(l: LinkCreate) -> Item:
         _assert_project(c, l.project_id)
         cur = c.execute(
             """INSERT INTO items(kind, project_id, title, body, tags, created_at, updated_at,
-                                 url, link_description, favicon_url, is_read)
-               VALUES('link', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 url, link_description, favicon_url, is_read, display_label)
+               VALUES('link', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 l.project_id, title, l.annotation, json.dumps(l.tags), now, now,
-                url, description, favicon, 1 if l.is_read else 0,
+                url, description, favicon, 1 if l.is_read else 0, l.display_label,
             ),
         )
         item_id = cur.lastrowid

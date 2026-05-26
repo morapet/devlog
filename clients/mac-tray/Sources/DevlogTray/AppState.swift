@@ -1,12 +1,27 @@
 import Foundation
 import SwiftUI
 
+struct BookmarkGroup: Identifiable {
+    let project: Project
+    let links: [Item]
+    var id: Int { project.id }
+}
+
+struct TaskGroup: Identifiable {
+    let project: Project
+    let items: [Item]
+    var id: Int { project.id }
+}
+
 @MainActor
 final class AppState: ObservableObject {
     @Published var projects: [Project] = []
     @Published var currentProject: Project?
     @Published var doing: Item?
     @Published var today: [Item] = []
+    @Published var bookmarks: [Item] = []
+    @Published var bookmarksByProject: [BookmarkGroup] = []
+    @Published var todayByProject: [TaskGroup] = []
     @Published var lastError: String?
     @Published var connected: Bool = false
 
@@ -28,10 +43,41 @@ final class AppState: ObservableObject {
             let current = try await APIClient.shared.currentProject()
             let doingList = try await APIClient.shared.listItems(kind: "task", status: TaskStatus.doing.rawValue, limit: 1)
             let todayList = try await APIClient.shared.listItems(kind: "task", status: TaskStatus.today.rawValue, limit: 20)
+            // All pinned links across every project — grouped per project in the menu.
+            let allBookmarks = try await APIClient.shared.listItems(kind: "link", isPinned: true, limit: 200)
+            var grouped: [Int: [Item]] = [:]
+            for b in allBookmarks { grouped[b.projectId, default: []].append(b) }
+            let currentId = current?.id
+            let groups: [BookmarkGroup] = projects.compactMap { p in
+                guard let links = grouped[p.id], !links.isEmpty else { return nil }
+                return BookmarkGroup(project: p, links: links)
+            }.sorted { a, b in
+                if (a.project.id == currentId) != (b.project.id == currentId) {
+                    return a.project.id == currentId
+                }
+                return a.project.name.localizedCompare(b.project.name) == .orderedAscending
+            }
+
+            // Group today tasks by project, current first then alphabetical.
+            var todayGrouped: [Int: [Item]] = [:]
+            for t in todayList { todayGrouped[t.projectId, default: []].append(t) }
+            let todayGroups: [TaskGroup] = projects.compactMap { p in
+                guard let items = todayGrouped[p.id], !items.isEmpty else { return nil }
+                return TaskGroup(project: p, items: items)
+            }.sorted { a, b in
+                if (a.project.id == currentId) != (b.project.id == currentId) {
+                    return a.project.id == currentId
+                }
+                return a.project.name.localizedCompare(b.project.name) == .orderedAscending
+            }
+
             self.projects = projects
             self.currentProject = current
             self.doing = doingList.first
             self.today = todayList
+            self.bookmarks = allBookmarks
+            self.bookmarksByProject = groups
+            self.todayByProject = todayGroups
             self.connected = true
             self.lastError = nil
         } catch {
@@ -57,6 +103,14 @@ final class AppState: ObservableObject {
     func markDoing(_ id: Int) {
         Task {
             _ = try? await APIClient.shared.markDoing(id)
+            await refresh()
+        }
+    }
+
+    /// Pause the currently-doing task by moving it back to 'today'.
+    func pauseDoing(_ id: Int) {
+        Task {
+            _ = try? await APIClient.shared.markToday(id)
             await refresh()
         }
     }

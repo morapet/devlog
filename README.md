@@ -90,9 +90,9 @@ devlog                # starts the backend
 bash $(uv tool dir)/devlog/scripts/install-drawio.sh   # if you want drawings
 ```
 
-## macOS menu-bar tray (optional)
+## Menu-bar tray (optional)
 
-Native SwiftUI menu-bar app. Requires Swift / CommandLineTools.
+### macOS — native SwiftUI
 
 ```bash
 make tray
@@ -100,7 +100,17 @@ make tray
 cd clients/mac-tray && ./build.sh && open .build/Devlog.app
 ```
 
-The icon in the menu bar shows the currently-doing task or today's count. Capture window has Task/Note/Link tabs.
+Requires Swift / CommandLineTools. The menu-bar icon shows the currently-doing task or today's count; the menu has the doing task at top, then bookmarks grouped per project, then today's tasks grouped per project.
+
+### Linux — GNOME / Ubuntu (PyGObject + libayatana-appindicator)
+
+```bash
+make tray-linux
+# or:
+bash clients/linux-tray/install.sh
+```
+
+Tested on Ubuntu 22.04 + GNOME 42 (X11). The installer apt-installs `python3-gi`, `gir1.2-ayatanaappindicator3-0.1` and friends, drops a launcher at `~/.local/bin/devlog-tray`, and enables autostart. Same menu layout as the macOS tray. See [clients/linux-tray/README.md](clients/linux-tray/README.md).
 
 ## MCP server
 

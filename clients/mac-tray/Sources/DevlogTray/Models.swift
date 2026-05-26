@@ -35,6 +35,7 @@ struct Item: Codable, Identifiable, Hashable {
     let linkDescription: String?
     let faviconUrl: String?
     let isRead: Bool
+    let displayLabel: String?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, title, body, tags, status, priority, url
@@ -48,5 +49,6 @@ struct Item: Codable, Identifiable, Hashable {
         case linkDescription = "link_description"
         case faviconUrl = "favicon_url"
         case isRead = "is_read"
+        case displayLabel = "display_label"
     }
 }

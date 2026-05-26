@@ -75,12 +75,13 @@ actor APIClient {
         return try await request("POST", "/projects", body: Req(slug: slug, name: name, description: description, color: color))
     }
 
-    func listItems(projectId: Int? = nil, kind: String? = nil, status: String? = nil, limit: Int = 100) async throws -> [Item] {
+    func listItems(projectId: Int? = nil, kind: String? = nil, status: String? = nil, isPinned: Bool? = nil, limit: Int = 100) async throws -> [Item] {
         var comps = URLComponents(url: baseURL.appendingPathComponent("/items"), resolvingAgainstBaseURL: false)!
         var q: [URLQueryItem] = [URLQueryItem(name: "limit", value: String(limit))]
         if let projectId { q.append(URLQueryItem(name: "project_id", value: String(projectId))) }
         if let kind { q.append(URLQueryItem(name: "kind", value: kind)) }
         if let status { q.append(URLQueryItem(name: "status", value: status)) }
+        if let isPinned { q.append(URLQueryItem(name: "is_pinned", value: isPinned ? "true" : "false")) }
         comps.queryItems = q
         var req = URLRequest(url: comps.url!)
         req.httpMethod = "GET"
@@ -120,6 +121,12 @@ actor APIClient {
 
     func markDone(_ id: Int) async throws -> Item {
         try await request("POST", "/tasks/\(id)/done")
+    }
+
+    /// Pause a doing task: move it back to 'today' (mirrors the web UI's ⏸ Today button).
+    func markToday(_ id: Int) async throws -> Item {
+        struct Req: Encodable { let status: String }
+        return try await request("PATCH", "/tasks/\(id)", body: Req(status: "today"))
     }
 }
 

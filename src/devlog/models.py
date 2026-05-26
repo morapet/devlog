@@ -67,6 +67,7 @@ class LinkCreate(BaseModel):
     project_id: int
     url: HttpUrl
     title: Optional[str] = None
+    display_label: Optional[str] = None
     annotation: Optional[str] = None
     tags: list[str] = []
     is_read: bool = False
@@ -75,6 +76,7 @@ class LinkCreate(BaseModel):
 
 class LinkUpdate(BaseModel):
     title: Optional[str] = None
+    display_label: Optional[str] = None
     annotation: Optional[str] = None
     tags: Optional[list[str]] = None
     is_read: Optional[bool] = None
@@ -103,6 +105,7 @@ class Item(BaseModel):
     favicon_url: Optional[str] = None
     is_read: bool = False
     is_pinned: bool = False
+    display_label: Optional[str] = None
     # populated on detail
     backlinks: list[int] = []
     refs_out: list[int] = []

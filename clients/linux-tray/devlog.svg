@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">
+    <!-- Simple checklist icon: monochrome so it adapts to dark/light panels. -->
+    <g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="16" height="16" rx="2.5" />
+        <polyline points="6,8.5 8.3,10.8 12,7" />
+        <polyline points="6,14.5 8.3,16.8 12,13" />
+        <line x1="14" y1="8.5" x2="17" y2="8.5" />
+        <line x1="14" y1="14.5" x2="17" y2="14.5" />
+    </g>
+</svg>
