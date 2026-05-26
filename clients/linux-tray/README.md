@@ -54,6 +54,23 @@ DEVLOG_BASE_URL=http://192.168.1.10:8765 devlog-tray
 
 Or edit `~/.local/bin/devlog-tray` to set the env var permanently.
 
+## Tray icon
+
+The icon is installed as a **symbolic SVG** at
+`~/.local/share/icons/hicolor/symbolic/apps/devlog-tray-symbolic.svg`. GNOME's
+panel will recolor it for light or dark themes automatically (the SVG uses the
+GTK-symbolic `#bebebe` placeholder color).
+
+Override with any system icon name:
+
+```bash
+DEVLOG_TRAY_ICON=task-due-symbolic devlog-tray
+DEVLOG_TRAY_ICON=view-list-symbolic devlog-tray
+```
+
+If you change the SVG, re-run `install.sh` (or just `cp` it into the icon dir
+and `gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor`).
+
 ## GNOME without the AppIndicator extension
 
 Ubuntu ships `gnome-shell-extension-appindicator` enabled out of the box. On vanilla GNOME (Fedora, Debian, etc.) install and enable it:

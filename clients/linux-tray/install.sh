@@ -20,6 +20,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 BIN_LINK="${HOME}/.local/bin/devlog-tray"
 DESKTOP="${HOME}/.local/share/applications/devlog-tray.desktop"
 AUTOSTART="${HOME}/.config/autostart/devlog-tray.desktop"
+ICON_DIR="${HOME}/.local/share/icons/hicolor/symbolic/apps"
+ICON_DEST="${ICON_DIR}/devlog-tray-symbolic.svg"
 
 echo "== installing launcher to ${BIN_LINK}"
 mkdir -p "$(dirname "$BIN_LINK")"
@@ -28,6 +30,12 @@ cat >"$BIN_LINK" <<EOF
 exec /usr/bin/python3 "${HERE}/devlog-tray.py" "\$@"
 EOF
 chmod +x "$BIN_LINK"
+
+echo "== installing symbolic icon to ${ICON_DEST}"
+mkdir -p "$ICON_DIR"
+cp "${HERE}/devlog-symbolic.svg" "$ICON_DEST"
+# Refresh the user-local icon cache so GTK picks it up immediately.
+gtk-update-icon-cache -f -t "${HOME}/.local/share/icons/hicolor" 2>/dev/null || true
 
 echo "== installing .desktop entry to ${DESKTOP}"
 mkdir -p "$(dirname "$DESKTOP")"
@@ -52,6 +60,10 @@ echo
 echo "Done."
 echo "Launch now:   devlog-tray  (or: ${BIN_LINK})"
 echo "Autostart:    on (delete ${AUTOSTART} to disable)"
+echo
+echo "The tray icon is installed as a symbolic SVG, so the panel will"
+echo "recolor it to match light/dark themes automatically. To override"
+echo "with a different system icon, set: DEVLOG_TRAY_ICON=task-due-symbolic"
 echo
 echo "If the icon doesn't appear in the top bar on vanilla GNOME, run:"
 echo "    gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com"

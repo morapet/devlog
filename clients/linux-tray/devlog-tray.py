@@ -43,8 +43,14 @@ from gi.repository import GLib, Gtk  # noqa: E402
 
 BASE = os.environ.get("DEVLOG_BASE_URL", "http://127.0.0.1:8765")
 HERE = os.path.dirname(os.path.abspath(__file__))
-ICON_PATH = os.path.join(HERE, "devlog.svg")
-ICON_FALLBACK = "task-due"  # XDG icon name, present in Adwaita / Yaru
+
+# Symbolic icon name (resolved via the XDG icon theme so the panel auto-recolors
+# it on dark/light themes). install.sh drops the SVG at
+# ~/.local/share/icons/hicolor/symbolic/apps/devlog-tray-symbolic.svg so this
+# name resolves locally; otherwise we fall back to a system theme icon.
+ICON_NAME = os.environ.get("DEVLOG_TRAY_ICON", "devlog-tray-symbolic")
+ICON_FALLBACK_NAME = "task-due-symbolic"
+ICON_PATH_FALLBACK = os.path.join(HERE, "devlog-symbolic.svg")
 
 REFRESH_SECONDS = 5
 
@@ -101,9 +107,22 @@ def project_sort_key(pid: int, current_id, project_by_id: dict):
 
 
 # ---------- Tray ----------
+def _resolve_icon() -> str:
+    """Prefer a named symbolic icon (theme-recoloured by GNOME); fall back to
+    the bundled SVG file path, then to a guaranteed system icon."""
+    from gi.repository import Gtk
+    theme = Gtk.IconTheme.get_default()
+    for name in (ICON_NAME, ICON_FALLBACK_NAME):
+        if theme.has_icon(name):
+            return name
+    if os.path.isfile(ICON_PATH_FALLBACK):
+        return ICON_PATH_FALLBACK
+    return "applications-utilities"  # always present
+
+
 class DevlogTray:
     def __init__(self) -> None:
-        icon = ICON_PATH if os.path.isfile(ICON_PATH) else ICON_FALLBACK
+        icon = _resolve_icon()
         self.ind = AppIndicator.Indicator.new(
             "devlog-tray", icon,
             AppIndicator.IndicatorCategory.APPLICATION_STATUS,

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Symbolic icon: fill #bebebe is the convention the GTK/GNOME theme
+     replaces with the panel's foreground color (light on dark panels,
+     dark on light panels). Do NOT use currentColor here — symbolic
+     recoloring only triggers on #bebebe. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+    <g fill="none" stroke="#bebebe" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="12" height="12" rx="2"/>
+        <polyline points="4.5,6.3 6.0,7.8 8.5,5.3"/>
+        <polyline points="4.5,11.0 6.0,12.5 8.5,10.0"/>
+        <line x1="10" y1="6.3" x2="13" y2="6.3"/>
+        <line x1="10" y1="11.0" x2="13" y2="11.0"/>
+    </g>
+</svg>
