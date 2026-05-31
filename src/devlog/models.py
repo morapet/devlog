@@ -12,12 +12,16 @@ class ProjectIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
     color: Optional[str] = None
+    parent_id: Optional[int] = None
 
 
 class ProjectUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     color: Optional[str] = None
+    # Use 0 to clear (make this a root project); a positive id to set/change parent.
+    # We can't represent "explicit null" cleanly with FastAPI's exclude_unset, so 0 == clear.
+    parent_id: Optional[int] = None
 
 
 class Project(BaseModel):
@@ -26,6 +30,7 @@ class Project(BaseModel):
     name: str
     description: Optional[str]
     color: Optional[str]
+    parent_id: Optional[int] = None
     created_at: str
     updated_at: str
 

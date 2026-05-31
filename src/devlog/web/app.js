@@ -160,12 +160,30 @@ function renderSidebar() {
     }, "+"),
   ));
 
+  // Build the 2-level tree: roots first (parent_id null), then their children.
+  const roots = state.projects
+    .filter((p) => !p.parent_id)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const childrenOf = new Map();
   for (const p of state.projects) {
-    sb.append(renderProjectRow(p));
+    if (p.parent_id) {
+      if (!childrenOf.has(p.parent_id)) childrenOf.set(p.parent_id, []);
+      childrenOf.get(p.parent_id).push(p);
+    }
   }
+  // Also collect orphans whose parent_id points nowhere (e.g. after deletion).
+  const validIds = new Set(state.projects.map((p) => p.id));
+  const orphans = state.projects.filter((p) => p.parent_id && !validIds.has(p.parent_id));
+
+  for (const p of roots) {
+    sb.append(renderProjectRow(p, 0));
+    const kids = (childrenOf.get(p.id) || []).slice().sort((a, b) => a.name.localeCompare(b.name));
+    for (const k of kids) sb.append(renderProjectRow(k, 1));
+  }
+  for (const o of orphans) sb.append(renderProjectRow(o, 0));
 }
 
-function renderProjectRow(p) {
+function renderProjectRow(p, depth = 0) {
   const isActive = state.pseudo == null && state.scopeProjectId === p.id;
   const isCurrent = p.id === state.currentProjectId;
 
@@ -173,8 +191,10 @@ function renderProjectRow(p) {
     ? el("span", { class: "inline-block w-2 h-2 rounded-full shrink-0", style: `background:${p.color}` })
     : el("span", { class: "inline-block w-2 h-2 rounded-full shrink-0 bg-slate-300" });
 
+  const indentClass = depth > 0 ? "pl-3 ml-2 border-l border-slate-200" : "";
+
   return el("div", {
-    class: "group flex items-center rounded " +
+    class: "group flex items-center rounded " + indentClass + " " +
       (isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"),
   },
     el("button", {
@@ -1574,6 +1594,16 @@ function openProjectModal(project) {
   let name = project?.name ?? "";
   let description = project?.description ?? "";
   let color = project?.color ?? "#64748b";
+  let parentId = project?.parent_id ?? null;
+
+  // Disable parent selector when editing a project that has children
+  // (otherwise we'd end up 3 levels deep — backend rejects anyway).
+  const hasChildren = isEdit && state.projects.some((x) => x.parent_id === project.id);
+  // Valid parent candidates: any other root project (and only when this project
+  // itself has no children).
+  const rootChoices = state.projects.filter(
+    (x) => !x.parent_id && (!isEdit || x.id !== project.id)
+  );
 
   const errBox = el("div", { class: "hidden text-sm text-red-600 mt-2" });
 
@@ -1601,18 +1631,37 @@ function openProjectModal(project) {
     oninput: (e) => { color = e.target.value; },
   });
 
+  const parentSel = el("select", {
+    class: "border border-slate-300 rounded px-2 py-1 text-sm w-full",
+    ...(hasChildren ? { disabled: "disabled" } : {}),
+    onchange: (e) => { parentId = e.target.value === "" ? null : Number(e.target.value); },
+  },
+    el("option", { value: "", ...(parentId == null ? { selected: "selected" } : {}) }, "— None (root project)"),
+    ...rootChoices.map((rp) =>
+      el("option", { value: String(rp.id), ...(parentId === rp.id ? { selected: "selected" } : {}) }, rp.name)
+    ),
+  );
+
   const save = async () => {
     errBox.classList.add("hidden");
     try {
       if (isEdit) {
+        // Backend reads parent_id == 0 as "clear". Use 0 when the user
+        // picked None so the column actually gets set to NULL.
         await api(`/projects/${project.id}`, {
           method: "PATCH",
-          body: JSON.stringify({ name, description: description || null, color }),
+          body: JSON.stringify({
+            name, description: description || null, color,
+            parent_id: parentId == null ? 0 : parentId,
+          }),
         });
       } else {
         await api("/projects", {
           method: "POST",
-          body: JSON.stringify({ slug, name, description: description || null, color }),
+          body: JSON.stringify({
+            slug, name, description: description || null, color,
+            parent_id: parentId,
+          }),
         });
       }
       overlay.classList.add("hidden");
@@ -1673,6 +1722,15 @@ function openProjectModal(project) {
       el("div", { class: "flex items-center gap-2" },
         el("label", { class: "text-xs uppercase tracking-wider text-slate-500" }, "Color"),
         colorInput,
+      ),
+      el("div", {},
+        el("label", { class: "text-xs uppercase tracking-wider text-slate-500" }, "Parent project"),
+        parentSel,
+        hasChildren
+          ? el("div", { class: "text-xs text-amber-700 mt-0.5" },
+              "This project has children — it cannot itself become a child (2-level limit).")
+          : el("div", { class: "text-xs text-slate-400 mt-0.5" },
+              "Choose a root project to nest under (max 2 levels)."),
       ),
     ),
     errBox,

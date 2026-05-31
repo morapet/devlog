@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS projects (
     name        TEXT NOT NULL,
     description TEXT,
     color       TEXT,
+    parent_id   INTEGER REFERENCES projects(id) ON DELETE SET NULL,
     created_at  TEXT NOT NULL,
     updated_at  TEXT NOT NULL
 );
@@ -166,6 +167,12 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_items_pinned ON items(is_pinned) WHERE is_pinned = 1")
     if "display_label" not in cols:
         c.execute("ALTER TABLE items ADD COLUMN display_label TEXT")
+
+    project_cols = {r["name"] for r in c.execute("PRAGMA table_info(projects)").fetchall()}
+    if "parent_id" not in project_cols:
+        # SQLite ALTER TABLE can't add a FK, but the API enforces it.
+        c.execute("ALTER TABLE projects ADD COLUMN parent_id INTEGER")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_projects_parent ON projects(parent_id)")
 
     # Rebuild items_fts if it doesn't include the 'tags' column.
     fts_cols: set[str] = set()
