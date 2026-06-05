@@ -577,8 +577,20 @@ function renderDetail() {
 function toggleFocusMode() {
   state.focusMode = !state.focusMode;
   try { localStorage.setItem("focusMode", JSON.stringify(state.focusMode)); } catch {}
+  _applyFocusBodyAttr();
   renderDetail();
 }
+
+// Keep the body data-attribute in sync with state.focusMode. The CSS in
+// style.css uses body[data-focus="1"] to hide the sidebar / list / splitter
+// and let the detail pane span the full window width.
+function _applyFocusBodyAttr() {
+  if (state.focusMode) document.body.setAttribute("data-focus", "1");
+  else document.body.removeAttribute("data-focus");
+}
+// Apply once on script load so a reload that restores focusMode = true from
+// localStorage gives full width immediately.
+_applyFocusBodyAttr();
 
 function renderTagsEditor(it) {
   const wrap = el("div", { class: "px-6 py-2 border-b border-slate-200 bg-white" });
@@ -974,7 +986,10 @@ function renderEditor(it, bodyVal) {
   // ── Focus mode: render preview only, full width ──
   if (state.focusMode) {
     const ro = el("div", {
-      class: "prose-body border border-slate-200 rounded p-5 bg-white overflow-auto min-h-[300px] max-w-3xl mx-auto",
+      // Wide reading column: a generous max keeps long lines comfortable, but
+      // the preview gets the full window width minus the side padding now
+      // that the sidebar / list pane are hidden by body[data-focus] CSS.
+      class: "prose-body bg-white overflow-auto min-h-[300px] max-w-[110ch] mx-auto px-6 py-6",
       id: "md-preview",
     });
     renderMarkdownInto(ro, bodyVal);

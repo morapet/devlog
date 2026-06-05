@@ -57,6 +57,19 @@
 /* "Selected" item row in list */
 .list-row.selected { background: #eff6ff; border-left-color: #2563eb; }
 
+/* Focus mode: hide everything except the detail pane so the content
+   gets the full window width. Toggled via body[data-focus="1"]. */
+body[data-focus="1"] #sidebar,
+body[data-focus="1"] #list-pane,
+body[data-focus="1"] #splitter,
+body[data-focus="1"] #home-view {
+  display: none !important;
+}
+body[data-focus="1"] #detail {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
 /* tab buttons */
 .tab-btn {
   padding: 0.4rem 0.75rem;
