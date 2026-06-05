@@ -51,3 +51,20 @@ app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
 @app.get("/", include_in_schema=False)
 def web_root() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
+
+
+# Service worker has to be served from the root (not from /static/sw.js) so its
+# scope can cover the entire origin — that's a hard browser requirement.
+@app.get("/sw.js", include_in_schema=False)
+def service_worker() -> FileResponse:
+    return FileResponse(
+        WEB_DIR / "sw.js",
+        media_type="application/javascript",
+        headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache"},
+    )
+
+
+# Manifest at the root too, for clients that don't look under /static/.
+@app.get("/manifest.json", include_in_schema=False)
+def web_manifest() -> FileResponse:
+    return FileResponse(WEB_DIR / "manifest.json", media_type="application/manifest+json")

@@ -3,7 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>devlog</title>
+<title>Devlog</title>
+
+<!-- PWA -->
+<link rel="manifest" href="/static/manifest.json" />
+<meta name="theme-color" content="#0f172a" />
+<meta name="application-name" content="Devlog" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Devlog" />
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+<link rel="apple-touch-icon" href="/static/icon.svg" />
+<link rel="mask-icon" href="/static/icon.svg" color="#0f172a" />
 <script src="https://cdn.tailwindcss.com"></script>
 
 <!-- Markdown: markdown-it + plugins -->
@@ -26,6 +37,13 @@
   <header class="h-12 border-b border-slate-200 bg-white px-4 flex items-center gap-4 shrink-0">
     <div class="font-semibold tracking-tight">devlog</div>
     <div id="current-project" class="text-sm text-slate-500"></div>
+    <div class="ml-auto flex items-center gap-2">
+      <button id="install-pwa" hidden
+              class="px-2 py-1 text-xs border border-slate-300 rounded text-slate-700 hover:bg-slate-100"
+              title="Install Devlog as a desktop app">
+        ⤓ Install app
+      </button>
+    </div>
   </header>
 
   <main class="flex-1 flex min-h-0">

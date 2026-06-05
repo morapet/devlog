@@ -1,3 +1,40 @@
+// ---------- PWA: service worker + install prompt ----------
+if ("serviceWorker" in navigator) {
+  // Register at /sw.js so the worker's scope is the whole origin (the server
+  // routes both /sw.js and /static/sw.js to the same file for this reason).
+  navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch((e) => {
+    console.warn("[devlog] service worker registration failed:", e);
+  });
+}
+
+// Chrome / Edge / Brave fire `beforeinstallprompt` when the PWA is installable.
+// Stash the event and reveal an "Install app" button in the header.
+let _deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  _deferredInstallPrompt = e;
+  const btn = document.getElementById("install-pwa");
+  if (btn) {
+    btn.hidden = false;
+    btn.onclick = async () => {
+      btn.disabled = true;
+      try {
+        _deferredInstallPrompt.prompt();
+        const { outcome } = await _deferredInstallPrompt.userChoice;
+        if (outcome === "accepted") btn.hidden = true;
+      } finally {
+        btn.disabled = false;
+        _deferredInstallPrompt = null;
+      }
+    };
+  }
+});
+// Hide the button once installed.
+window.addEventListener("appinstalled", () => {
+  const btn = document.getElementById("install-pwa");
+  if (btn) btn.hidden = true;
+});
+
 // ---------- tiny utils ----------
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {

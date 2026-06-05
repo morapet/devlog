@@ -1,0 +1,41 @@
+{
+  "name": "Devlog",
+  "short_name": "Devlog",
+  "description": "Local-first developer task, note, link, and time tracker.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "lang": "en",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Home",
+      "short_name": "Home",
+      "description": "Bookmarks, doing, today, stats",
+      "url": "/",
+      "icons": [{ "src": "/static/icon.svg", "sizes": "any" }]
+    },
+    {
+      "name": "Docs (Swagger)",
+      "short_name": "API",
+      "url": "/docs"
+    }
+  ]
+}
