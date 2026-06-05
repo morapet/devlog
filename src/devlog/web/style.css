@@ -57,12 +57,10 @@
 /* "Selected" item row in list */
 .list-row.selected { background: #eff6ff; border-left-color: #2563eb; }
 
-/* Focus mode: hide the sidebar / list pane / splitter so the focused
-   detail pane gets the full window width. Toggled via body[data-focus="1"].
-   We deliberately DO NOT hide #home-view here — Home is not a focused item,
-   and hiding it would leave nothing on screen if focus mode is reloaded
-   while the user is on the Home view. */
-body[data-focus="1"] #sidebar,
+/* Focus mode: hide the list pane + splitter so the detail spans the
+   full width *next to the sidebar*. Toggled via body[data-focus="1"].
+   Sidebar stays visible — you still want to navigate between projects
+   and items while focused-reading one. */
 body[data-focus="1"] #list-pane,
 body[data-focus="1"] #splitter {
   display: none !important;
