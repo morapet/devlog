@@ -1,0 +1,22 @@
+[Unit]
+Description=Devlog local backend (FastAPI on 127.0.0.1:8765)
+Documentation=https://github.com/morapet/devlog
+After=network.target
+
+[Service]
+Type=simple
+# Installed via `pipx install` or `uv tool install` — both land here.
+ExecStart=%h/.local/bin/devlog
+# DEVLOG_DATA_DIR can be overridden in ~/.config/devlog.env if you want
+# the SQLite file somewhere other than the default $XDG_DATA_HOME/devlog/.
+EnvironmentFile=-%h/.config/devlog.env
+Environment=DEVLOG_HOST=127.0.0.1
+Environment=DEVLOG_PORT=8765
+Restart=on-failure
+RestartSec=5
+# Don't kill the autopause loop mid-tick on stop.
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target

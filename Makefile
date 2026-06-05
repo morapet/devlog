@@ -18,6 +18,11 @@ tray: ## Build and launch the macOS tray app (requires Xcode CLT)
 tray-linux: ## Install the Linux tray (apt deps + ~/.local/bin launcher + autostart)
 	bash clients/linux-tray/install.sh
 
+server-linux: ## Install the devlog backend as a systemd --user service (Ubuntu/Debian)
+	bash clients/linux-server/install.sh
+
+install-linux: server-linux tray-linux ## Backend service + tray, all-in-one Linux install
+
 mcp: ## Run the devlog MCP server over stdio (for Claude Desktop / Code)
 	uv run devlog-mcp
 
