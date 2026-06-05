@@ -74,14 +74,27 @@ echo "    installed: $BIN"
 
 # ---------- 3. drawio ----------
 if [ "$INSTALL_DRAWIO" = "1" ]; then
-    # Find where the installed package landed; web/vendor/drawio sits next to web/.
-    PKG_DIR="$(python3 -c '
+    # uv/pipx install devlog into their own isolated venv; system python3 can't
+    # see it. The console script's shebang points at the right interpreter —
+    # extract it and ask that python where the package lives.
+    SHEBANG="$(head -1 "$BIN")"
+    DEVLOG_PY="${SHEBANG#\#!}"
+    if [ ! -x "$DEVLOG_PY" ]; then
+        echo "ERROR: could not extract the python interpreter from $BIN" >&2
+        echo "  shebang line was: $SHEBANG" >&2
+        exit 1
+    fi
+    PKG_DIR="$("$DEVLOG_PY" -c '
 import importlib.util, pathlib, sys
 spec = importlib.util.find_spec("devlog")
 if not spec or not spec.submodule_search_locations:
     sys.exit("could not locate devlog package")
 print(pathlib.Path(spec.submodule_search_locations[0]))
 ')"
+    if [ -z "$PKG_DIR" ]; then
+        echo "ERROR: devlog package not importable via $DEVLOG_PY" >&2
+        exit 1
+    fi
     DEST="$PKG_DIR/web/vendor/drawio"
     if [ -d "$DEST" ] && [ -f "$DEST/index.html" ]; then
         echo "==> drawio already present at $DEST (skipping)"
