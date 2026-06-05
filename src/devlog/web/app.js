@@ -2404,15 +2404,50 @@ function sectionHeader(title, sub) {
   );
 }
 
+// User-picked tags that act as bookmark group labels (within each project).
+// Stored as a comma-separated string in localStorage; parsed lazily.
+function getBookmarkGroupTags() {
+  try {
+    const raw = localStorage.getItem("bookmarkGroupTags") || "";
+    return raw.split(",").map((t) => t.trim()).filter(Boolean);
+  } catch { return []; }
+}
+function setBookmarkGroupTags(list) {
+  try { localStorage.setItem("bookmarkGroupTags", list.map((t) => t.trim()).filter(Boolean).join(", ")); } catch {}
+}
+
 function bookmarksSection(links) {
+  const groupTags = getBookmarkGroupTags();
+
+  // A small input in the section header lets the user pick which tags
+  // become group labels.
+  const groupingInput = el("input", {
+    type: "text",
+    value: groupTags.join(", "),
+    placeholder: "docs, tools, reading…",
+    title: "Comma-separated tag names; matching bookmarks are grouped under each",
+    class: "ml-2 px-2 py-0.5 text-xs border border-slate-300 rounded w-56 bg-white",
+    onchange: (e) => {
+      setBookmarkGroupTags(e.target.value.split(","));
+      renderHome();  // re-render so the new grouping takes effect
+    },
+  });
+  const groupingControl = el("div", { class: "flex items-center gap-2" },
+    el("span", { class: "text-xs text-slate-400" }, "group by tag:"),
+    groupingInput,
+  );
+
   if (links.length === 0) {
     return el("section", {},
-      sectionHeader("Bookmarks"),
+      el("div", { class: "flex items-baseline justify-between mb-3" },
+        el("h2", { class: "text-sm font-semibold uppercase tracking-wider text-slate-500" }, "Bookmarks"),
+        groupingControl,
+      ),
       el("div", { class: "text-sm text-slate-400 italic" }, "No bookmarks yet — open a link and use ☆ Bookmark."),
     );
   }
 
-  // Group by project.
+  // Group by project first.
   const byProject = new Map();
   for (const link of links) {
     const pid = link.project_id ?? link.projectId;
@@ -2420,21 +2455,29 @@ function bookmarksSection(links) {
     byProject.get(pid).push(link);
   }
 
-  // Order groups: current project first, then alphabetical by name.
-  const groups = [];
+  // Order: current project first, then alphabetical by name.
+  const projectGroups = [];
   for (const pid of byProject.keys()) {
     const proj = state.projects.find((p) => p.id === pid);
-    groups.push({ project: proj, links: byProject.get(pid) });
+    projectGroups.push({ project: proj, links: byProject.get(pid) });
   }
-  groups.sort((a, b) => {
+  projectGroups.sort((a, b) => {
     const ac = a.project?.id === state.currentProjectId ? 0 : 1;
     const bc = b.project?.id === state.currentProjectId ? 0 : 1;
     if (ac !== bc) return ac - bc;
     return (a.project?.name || "").localeCompare(b.project?.name || "");
   });
 
-  const children = [sectionHeader("Bookmarks", `${links.length}`)];
-  for (const g of groups) {
+  const header = el("div", { class: "flex items-baseline justify-between mb-3 flex-wrap gap-2" },
+    el("div", { class: "flex items-baseline gap-2" },
+      el("h2", { class: "text-sm font-semibold uppercase tracking-wider text-slate-500" }, "Bookmarks"),
+      el("span", { class: "text-xs text-slate-400" }, `${links.length}`),
+    ),
+    groupingControl,
+  );
+
+  const children = [header];
+  for (const g of projectGroups) {
     children.push(
       el("div", { class: "mt-3 mb-1 flex items-center gap-2" },
         g.project?.color
@@ -2454,11 +2497,39 @@ function bookmarksSection(links) {
         el("span", { class: "text-xs text-slate-400" }, `· ${g.links.length}`),
         el("div", { class: "flex-1 border-t border-slate-200 ml-2" }),
       ),
-      el("div", { class: "flex flex-wrap gap-2" }, ...g.links.map(pinnedTile)),
+      renderBookmarkRows(g.links, groupTags),
     );
   }
 
   return el("section", {}, ...children);
+}
+
+// Within a single project's bookmarks: either a flat tile row (no group tags
+// configured) or a labeled mini-row per group tag with an "Other" row for
+// bookmarks lacking any of them.
+function renderBookmarkRows(links, groupTags) {
+  if (groupTags.length === 0) {
+    return el("div", { class: "flex flex-wrap gap-2" }, ...links.map(pinnedTile));
+  }
+  const groupContainer = el("div", { class: "space-y-2" });
+  const seen = new Set();   // bookmarks claimed by at least one group tag
+  for (const tag of groupTags) {
+    const matching = links.filter((l) => (l.tags || []).includes(tag));
+    if (matching.length === 0) continue;
+    matching.forEach((l) => seen.add(l.id));
+    groupContainer.append(el("div", { class: "pl-4 border-l-2 border-slate-200" },
+      el("div", { class: "text-[11px] font-medium text-slate-500 mb-1" }, tag),
+      el("div", { class: "flex flex-wrap gap-2" }, ...matching.map(pinnedTile)),
+    ));
+  }
+  const other = links.filter((l) => !seen.has(l.id));
+  if (other.length > 0) {
+    groupContainer.append(el("div", { class: "pl-4 border-l-2 border-slate-200" },
+      el("div", { class: "text-[11px] font-medium text-slate-400 mb-1 italic" }, "Other"),
+      el("div", { class: "flex flex-wrap gap-2" }, ...other.map(pinnedTile)),
+    ));
+  }
+  return groupContainer;
 }
 
 function searchSection() {
