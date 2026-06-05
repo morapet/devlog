@@ -90,6 +90,29 @@ devlog                # starts the backend
 bash $(uv tool dir)/devlog/scripts/install-drawio.sh   # if you want drawings
 ```
 
+### Option E — Ubuntu / Debian, run on every login (systemd user service)
+
+```bash
+# From a repo checkout
+make install-linux      # backend service + tray, all-in-one
+
+# Or piecewise
+bash clients/linux-server/install.sh   # backend via pipx/uv + systemd --user
+bash clients/linux-tray/install.sh     # tray indicator + autostart
+
+# Or from anywhere, no checkout
+curl -sLf https://raw.githubusercontent.com/morapet/devlog/main/clients/linux-server/install.sh \
+    | bash -s -- --from-github --linger
+```
+
+The server script:
+- Installs the `devlog` package (via `uv tool` → `pipx` → `pip --user`, whichever exists; bootstraps `pipx` via apt if none).
+- Downloads the drawio webapp into the installed package (skip with `--no-drawio`).
+- Writes `~/.config/systemd/user/devlog.service` and runs `systemctl --user enable --now devlog`.
+- With `--linger`, runs `sudo loginctl enable-linger $USER` so the backend keeps running after logout.
+
+See [clients/linux-server/README.md](clients/linux-server/README.md) for status / upgrade / uninstall.
+
 ## Menu-bar tray (optional)
 
 ### macOS — native SwiftUI
