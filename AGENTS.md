@@ -282,7 +282,17 @@ The same diagram as SVG (the *renderable* version) should match visually. You pr
 
 ### 5.2 Create / update / delete
 
-There is no MCP tool for attachments yet (planned). Use HTTP directly:
+There are now MCP tools for this. Prefer them when MCP is available:
+
+```
+create_attachment(item_id, data_xml=<mxfile>, data_svg=<svg>, title="Architecture")
+update_attachment(attachment_id, data_xml=..., data_svg=...)
+delete_attachment(attachment_id)
+list_attachments(item_id)
+get_attachment(attachment_id)
+```
+
+If MCP isn't available, the HTTP equivalents are:
 
 ```bash
 # create

@@ -25,7 +25,91 @@ from mcp.server.fastmcp import FastMCP
 
 BASE_URL = os.environ.get("DEVLOG_BASE_URL", "http://127.0.0.1:8765")
 
-mcp = FastMCP("devlog")
+# Instructions surfaced to the LLM client at MCP `initialize`. Concise on
+# purpose — full reference lives in AGENTS.md and SPECIFICATION.md in the repo.
+INSTRUCTIONS = """\
+devlog is a local-first task/note/link tracker with built-in time tracking and
+drawio diagrams. Use these tools to record work and look things up. There is
+ONE user and ONE backend at http://127.0.0.1:8765; no auth, no multi-tenant.
+
+## Hard invariants (rely on these; don't simulate them)
+
+- **Single 'doing'.** At most one task is `doing` system-wide. Call
+  `mark_doing(item_id)` and trust the backend — it demotes whatever was
+  previously doing to `today` and closes that task's open session atomically.
+- **2-level project tree.** A project's `parent_id` must point to a root
+  (parent_id IS NULL). Three-level chains are rejected. If you need depth,
+  model the third level as tags.
+- **Auto-pause at end of workday.** Open work_sessions running past the
+  working-hours end (default 18:00 Mon–Fri local) are auto-closed by the
+  backend at that boundary. Don't try to close them manually.
+- **Refs auto-rebuild.** `#42` and `[[Title]]` tokens in any item body create
+  graph edges in `refs` on save. Backlinks come for free — just write the
+  tokens, don't manage edges.
+- **Version snapshots.** Every PATCH that changes title or body snapshots the
+  previous content. Restoring an old version is itself a PATCH (which creates
+  yet another version).
+- **Cascade.** Deleting a project deletes its items; child projects are
+  promoted to roots (parent_id = NULL), not deleted.
+- **Project arg accepts slug or id.** `create_task(project="auth", …)` is
+  resolved by these tools to the int id.
+
+## Common workflows
+
+- New project: `create_project(slug, name)` then optionally `set_current_project(slug)`.
+- Add work: `create_task(project, title, status="today", priority?, body?, tags?)`,
+  `create_note(project, body, title?, tags?)`,
+  `create_link(project, url, display_label?, tags?, is_pinned?)`.
+- Track time: `mark_doing(item_id)` to start (auto-pauses whatever was doing),
+  `update_task(item_id, status="today")` to pause, `mark_done(item_id)` to finish.
+- Retroactive time: `add_session(task_id, started_at, ended_at?)` (ISO 8601 with TZ).
+- Search: plain words use FTS; `tag:value` filters exact tags. Multiple
+  tokens AND: `search(q="tag:work auth jwt")`.
+- Stats: `stats(from_date, to_date, project?)` returns total_seconds + by_day
+  + by_task + by_project + activity. Time math is RAW (no working-hours
+  clipping in stats — that setting only drives auto-pause).
+
+## Drawings (attachments)
+
+Each drawing has TWO payloads stored together:
+- `data_xml` — drawio mxfile XML; loaded by the drawio editor for re-edit.
+- `data_svg` — rendered SVG; inlined in the markdown preview via Shadow DOM.
+
+You author BOTH yourself (drawio doesn't render headlessly). The minimum
+mxfile is `<mxfile><diagram><mxGraphModel><root><mxCell id="0"/><mxCell
+id="1" parent="0"/>...vertices...edges...</root></mxGraphModel></diagram></mxfile>`.
+See AGENTS.md §5.4 for a copy-pastable Python helper that builds
+boxes-and-arrows mxfile + matching SVG from `(vertices, edges)` lists.
+
+Tools:
+- `list_attachments(item_id)`
+- `create_attachment(item_id, data_xml, data_svg, title?)` → returns the new id
+- `update_attachment(attachment_id, data_xml?, data_svg?, title?)`
+- `delete_attachment(attachment_id)`
+
+To make the drawing show inline in a note, embed `![[drawing:N]]` in the
+note body via `update_note(item_id, body=...)`.
+
+## Cheapest endpoint for a question
+
+- "what am I doing right now?" → `list_items(kind='task', status='doing', limit=1)`
+- "tasks due today across projects" → `list_items(kind='task', status='today')`
+- "find anything about X" → `search(q="X", limit=20)`
+- "how much time on task N?" → `task_totals()` or `list_sessions(task_id=N)`
+- "what did I do this week?" → `stats(from_date=monday, to_date=today)`
+- "is this item linked anywhere?" → `get_item(N)` (includes `backlinks` + `refs_out`)
+
+Visual color palette for drawings (so generated diagrams match the UI):
+info  #eff6ff/#3b82f6/#1e3a8a, success #ecfdf5/#10b981/#065f46,
+warning #fef3c7/#f59e0b/#92400e, critical #fef2f2/#ef4444/#7f1d1d,
+system #f1f5f9/#0f172a/#0f172a, async #fdf4ff/#a855f7/#581c87,
+muted #f1f5f9/#94a3b8/#334155. Edges: stroke #475569, width 1.5.
+
+Full reference: AGENTS.md (operating guide) and SPECIFICATION.md (full spec)
+in the devlog repo.
+"""
+
+mcp = FastMCP("devlog", instructions=INSTRUCTIONS)
 
 # A single shared client. httpx.Client is thread-safe for use across requests.
 _client = httpx.Client(base_url=BASE_URL, timeout=20.0)
@@ -311,6 +395,83 @@ def task_totals(project: Optional[str] = None) -> dict[int, float]:
     if project is not None:
         params["project_id"] = _resolve_project(project)
     return _req("GET", "/tasks/totals", params=params)
+
+
+# ----------------------- Attachments (drawings) -----------------------
+
+@mcp.tool()
+def list_attachments(item_id: int) -> list[dict]:
+    """List drawings (and other attachments) on an item.
+
+    Each entry is a summary that omits the bulky data_xml field — use
+    get_attachment to fetch the full payload for re-editing.
+    """
+    return _req("GET", f"/items/{item_id}/attachments")
+
+
+@mcp.tool()
+def get_attachment(attachment_id: int) -> dict:
+    """Fetch an attachment in full, including data_xml (drawio mxfile) and data_svg."""
+    return _req("GET", f"/attachments/{attachment_id}")
+
+
+@mcp.tool()
+def create_attachment(
+    item_id: int,
+    data_xml: str,
+    data_svg: str,
+    title: Optional[str] = None,
+    kind: str = "drawing",
+) -> dict:
+    """Attach a drawing to an item (task / note / link). Returns the new attachment.
+
+    You must author BOTH payloads:
+      - data_xml: drawio mxfile XML, used by the drawio editor for re-edit.
+      - data_svg: rendered SVG, inlined in the markdown preview.
+
+    Minimum mxfile skeleton:
+      <mxfile><diagram id="d1" name="Page-1"><mxGraphModel ...><root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="v1" value="X" vertex="1" parent="1"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#eff6ff;strokeColor=#3b82f6;">
+          <mxGeometry x="40" y="40" width="160" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="v1" target="v2"
+          style="endArrow=classic;html=1;strokeColor=#475569;">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root></mxGraphModel></diagram></mxfile>
+
+    After creating attachment id N, embed it in the item's body via:
+      update_note(item_id, body="... ![[drawing:N]] ...")
+    (or update_task / update_link as appropriate).
+    """
+    return _req("POST", f"/items/{item_id}/attachments", json={
+        "kind": kind,
+        "title": title,
+        "data_xml": data_xml,
+        "data_svg": data_svg,
+    })
+
+
+@mcp.tool()
+def update_attachment(
+    attachment_id: int,
+    data_xml: Optional[str] = None,
+    data_svg: Optional[str] = None,
+    title: Optional[str] = None,
+) -> dict:
+    """Update a drawing's XML, SVG, or title. Pass only the fields you want changed."""
+    payload = {k: v for k, v in {"data_xml": data_xml, "data_svg": data_svg, "title": title}.items() if v is not None}
+    return _req("PATCH", f"/attachments/{attachment_id}", json=payload)
+
+
+@mcp.tool()
+def delete_attachment(attachment_id: int) -> dict:
+    """Delete an attachment. Note: the ![[drawing:N]] token in any item body is NOT
+    automatically removed — clean it up via update_note / update_task / update_link
+    if needed."""
+    return _req("DELETE", f"/attachments/{attachment_id}")
 
 
 # ----------------------- Search & stats -----------------------
