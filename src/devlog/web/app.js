@@ -834,6 +834,103 @@ function label(text, child) {
   );
 }
 
+// ---------- markdown toolbar helpers ----------
+function _mdBtn(label, title, onClick, extraClass = "") {
+  return el("button", {
+    class: "px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100 min-w-[28px] " + extraClass,
+    title, type: "button", onclick: onClick,
+  }, label);
+}
+function _mdSep() {
+  return el("span", { class: "inline-block w-px h-5 bg-slate-200 mx-0.5", "aria-hidden": "true" });
+}
+
+function _emitInput(ta) {
+  ta.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function _mdWrap(ta, before, after, placeholder = "") {
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const had = e > s;
+  const sel = had ? ta.value.slice(s, e) : placeholder;
+  ta.value = ta.value.slice(0, s) + before + sel + after + ta.value.slice(e);
+  ta.focus();
+  if (had) {
+    ta.selectionStart = s + before.length;
+    ta.selectionEnd   = s + before.length + sel.length;
+  } else {
+    // Pre-select the placeholder so the user can type over it
+    ta.selectionStart = s + before.length;
+    ta.selectionEnd   = s + before.length + placeholder.length;
+  }
+  _emitInput(ta);
+}
+
+function _mdPrefix(ta, prefix) {
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const v = ta.value;
+  const lineStart = v.lastIndexOf("\n", s - 1) + 1;
+  const lineEndIdx = v.indexOf("\n", e);
+  const blockEnd = lineEndIdx === -1 ? v.length : lineEndIdx;
+  const block = v.slice(lineStart, blockEnd) || ""; // allow on empty line
+  let counter = 1;
+  const newBlock = (block === "" ? [""] : block.split("\n"))
+    .map((line) => prefix === "__num__" ? `${counter++}. ${line}` : prefix + line)
+    .join("\n");
+  ta.value = v.slice(0, lineStart) + newBlock + v.slice(blockEnd);
+  ta.focus();
+  ta.selectionStart = lineStart;
+  ta.selectionEnd   = lineStart + newBlock.length;
+  _emitInput(ta);
+}
+
+function _mdInsert(ta, text) {
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
+  ta.focus();
+  ta.selectionStart = ta.selectionEnd = s + text.length;
+  _emitInput(ta);
+}
+
+function _mdLink(ta) {
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e) || "link text";
+  const url = prompt("URL", "https://");
+  if (!url) return;
+  const md = `[${sel}](${url})`;
+  ta.value = ta.value.slice(0, s) + md + ta.value.slice(e);
+  ta.focus();
+  // place selection on the link text portion so the user can refine it
+  ta.selectionStart = s + 1;
+  ta.selectionEnd   = s + 1 + sel.length;
+  _emitInput(ta);
+}
+
+function _mdCodeBlock(ta) {
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e) || "code";
+  const needsLeadingNl = s > 0 && ta.value[s - 1] !== "\n";
+  const block = (needsLeadingNl ? "\n" : "") + "```\n" + sel + "\n```\n";
+  ta.value = ta.value.slice(0, s) + block + ta.value.slice(e);
+  ta.focus();
+  // place caret/selection inside the code fence
+  const openLen = (needsLeadingNl ? 1 : 0) + 4; // "\n```\n" or "```\n"
+  ta.selectionStart = s + openLen;
+  ta.selectionEnd   = s + openLen + sel.length;
+  _emitInput(ta);
+}
+
+function _mdAdmonition(ta) {
+  const s = ta.selectionStart, e = ta.selectionEnd;
+  const sel = ta.value.slice(s, e) || "body";
+  const block = `!!! note\n    ${sel.replace(/\n/g, "\n    ")}\n`;
+  ta.value = ta.value.slice(0, s) + block + ta.value.slice(e);
+  ta.focus();
+  ta.selectionStart = s + 4;      // after "!!! "
+  ta.selectionEnd   = s + 8;      // selects "note" so user can rename
+  _emitInput(ta);
+}
+
 function renderEditor(it, bodyVal) {
   const outer = el("div", { class: "px-6 py-3" });
 
@@ -879,15 +976,6 @@ function renderEditor(it, bodyVal) {
     return outer;
   }
 
-  // Tiny toolbar above the editor for inserts (drawings, etc.)
-  const toolbar = el("div", { class: "mb-2 flex items-center gap-2 text-xs" },
-    el("button", {
-      class: "px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100",
-      title: "Insert a drawio drawing",
-      onclick: () => openDrawingEditor(it, null, ta),
-    }, "✎ Insert drawing"),
-  );
-
   const wrap = el("div", { class: "grid grid-cols-2 gap-4 min-h-[300px]" });
 
   const ta = el("textarea", {
@@ -896,6 +984,44 @@ function renderEditor(it, bodyVal) {
     oninput: (e) => { setDraftQuiet(it.id, "body", e.target.value); updatePreview(e.target.value); },
     spellcheck: "false",
   }, bodyVal);
+  // Cmd/Ctrl shortcuts: B = bold, I = italic, K = link.
+  ta.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+      const k = e.key.toLowerCase();
+      if      (k === "b") { e.preventDefault(); _mdWrap(ta, "**", "**", "bold"); }
+      else if (k === "i") { e.preventDefault(); _mdWrap(ta, "*",  "*",  "italic"); }
+      else if (k === "k") { e.preventDefault(); _mdLink(ta); }
+    }
+  });
+
+  // Markdown formatting toolbar above the editor.
+  const toolbar = el("div", { class: "mb-2 flex flex-wrap items-center gap-1 text-xs select-none" },
+    _mdBtn("B",       "Bold (⌘/Ctrl+B)",        () => _mdWrap(ta, "**", "**", "bold"),  "font-bold"),
+    _mdBtn("I",       "Italic (⌘/Ctrl+I)",      () => _mdWrap(ta, "*",  "*",  "italic"), "italic"),
+    _mdBtn("S",       "Strikethrough",         () => _mdWrap(ta, "~~", "~~", "strike"), "line-through"),
+    _mdBtn("</>",     "Inline code",           () => _mdWrap(ta, "`",  "`",  "code"),   "font-mono"),
+    _mdSep(),
+    _mdBtn("H1",      "Heading 1",             () => _mdPrefix(ta, "# ")),
+    _mdBtn("H2",      "Heading 2",             () => _mdPrefix(ta, "## ")),
+    _mdBtn("H3",      "Heading 3",             () => _mdPrefix(ta, "### ")),
+    _mdSep(),
+    _mdBtn("•",       "Bulleted list",         () => _mdPrefix(ta, "- ")),
+    _mdBtn("1.",      "Numbered list",         () => _mdPrefix(ta, "__num__")),
+    _mdBtn("☐",       "Task list item",        () => _mdPrefix(ta, "- [ ] ")),
+    _mdBtn("❝",       "Quote",                 () => _mdPrefix(ta, "> ")),
+    _mdSep(),
+    _mdBtn("🔗",      "Link (⌘/Ctrl+K)",       () => _mdLink(ta)),
+    _mdBtn("```",     "Code block",            () => _mdCodeBlock(ta)),
+    _mdBtn("─",       "Horizontal rule",       () => _mdInsert(ta, "\n\n---\n\n")),
+    _mdBtn("!!!",     "Note admonition",       () => _mdAdmonition(ta)),
+    _mdSep(),
+    el("button", {
+      class: "px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100",
+      title: "Insert a drawio drawing",
+      type: "button",
+      onclick: () => openDrawingEditor(it, null, ta),
+    }, "✎ Drawing"),
+  );
 
   const preview = el("div", { class: "prose-body border border-slate-100 rounded p-3 bg-slate-50 overflow-auto", id: "md-preview" });
   renderMarkdownInto(preview, bodyVal);
