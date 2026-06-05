@@ -205,11 +205,13 @@ make clean              # remove build artifacts (keeps data + db)
 - **macOS tray**: SwiftUI MenuBarExtra · NSStatusItem · async/await URLSession client
 - **MCP**: `mcp` Python SDK (FastMCP, stdio transport)
 
-## For AI agents
+## Documentation
 
-If an LLM (Claude / Codex / etc.) is going to drive devlog — over MCP, raw HTTP, or both — start at [AGENTS.md](AGENTS.md). It covers connect-via-MCP wiring, the common workflows (project + tasks + notes + links + sessions + search + stats), the cross-reference syntax, and a complete recipe (with Python helper) for authoring drawio drawings programmatically.
+Three layers, each at a different scope:
 
-For a full reimplementation reference, see [SPECIFICATION.md](SPECIFICATION.md).
+- [ARCHITECTURE.md](ARCHITECTURE.md) — big picture: system diagram, process model, rendering pipeline, what each client does, what's new recently.
+- [AGENTS.md](AGENTS.md) — operating guide for LLMs: how to connect via MCP, common workflows mapped to tool calls, the drawio recipe with a Python helper.
+- [SPECIFICATION.md](SPECIFICATION.md) — exhaustive contract suitable for full reimplementation. Domain model, every endpoint, every invariant.
 
 ## License
 
