@@ -508,6 +508,8 @@ async function selectItem(id) {
     $("#detail").replaceChildren(el("div", { class: "p-6 text-sm text-red-600" }, "Failed: " + e.message));
     return;
   }
+  // Now that an item is selected, apply focus body attr (if focusMode is on).
+  _applyFocusBodyAttr();
   // mark selected
   for (const row of document.querySelectorAll(".list-row")) {
     if (row.textContent.includes("#" + id)) row.classList.add("selected");
@@ -584,8 +586,13 @@ function toggleFocusMode() {
 // Keep the body data-attribute in sync with state.focusMode. The CSS in
 // style.css uses body[data-focus="1"] to hide the sidebar / list / splitter
 // and let the detail pane span the full window width.
+//
+// Important: focus mode only applies visually when an item is actually
+// being viewed. On Home / project lists without a selection, leave the
+// layout normal — otherwise reloading the page (with focusMode persisted)
+// would hide the sidebar with nothing focused to see.
 function _applyFocusBodyAttr() {
-  if (state.focusMode) document.body.setAttribute("data-focus", "1");
+  if (state.focusMode && state.selected) document.body.setAttribute("data-focus", "1");
   else document.body.removeAttribute("data-focus");
 }
 // Apply once on script load so a reload that restores focusMode = true from
@@ -1633,7 +1640,12 @@ async function deleteItem(it) {
   } catch (e) { toast(e.message); }
 }
 
-function clearSel() { state.selected = null; state.selectedId = null; }
+function clearSel() {
+  state.selected = null; state.selectedId = null;
+  // Focus mode is only "on" while an item is being viewed; clear the body
+  // attribute so the sidebar reappears as soon as the user navigates away.
+  if (typeof _applyFocusBodyAttr === "function") _applyFocusBodyAttr();
+}
 
 // (Header search and global "+ New" buttons removed — search lives inside Home, "+ New" lives in the sidebar.)
 
