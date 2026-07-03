@@ -1,0 +1,28 @@
+# devlog behind Caddy on a VPS: automatic HTTPS (Let's Encrypt) + devlog's
+# built-in password auth. See README.md in this directory.
+services:
+  devlog:
+    image: ghcr.io/morapet/devlog:latest
+    restart: unless-stopped
+    environment:
+      DEVLOG_PASSWORD: ${DEVLOG_PASSWORD:?set DEVLOG_PASSWORD in .env}
+    volumes:
+      - ./data:/data
+    # No ports: — only Caddy talks to devlog, on the internal network.
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DEVLOG_DOMAIN: ${DEVLOG_DOMAIN:?set DEVLOG_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

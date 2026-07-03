@@ -113,6 +113,48 @@ The server script:
 
 See [clients/linux-server/README.md](clients/linux-server/README.md) for status / upgrade / uninstall.
 
+## Use from your iPhone (or any phone)
+
+The web UI is a mobile-friendly PWA — run the backend on any machine your phone can reach and it behaves like a native app. There is no iOS build to install; Safari is the client.
+
+### Same Wi-Fi (home / office LAN)
+
+1. Make the server reachable from the network:
+   - **Docker** already binds `0.0.0.0` — nothing to do.
+   - **Local Python**: `DEVLOG_HOST=0.0.0.0 make dev` (the default bind is `127.0.0.1`, which the phone can't reach).
+2. Find the machine's LAN IP: `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux).
+3. On the iPhone, open `http://<that-ip>:8765` in Safari.
+4. **Add to Home Screen**: tap Share → *Add to Home Screen*. Devlog launches full-screen with its own icon, indistinguishable from a native app.
+
+### Away from home — Tailscale (recommended)
+
+Install [Tailscale](https://tailscale.com) on the server machine and the iPhone (App Store, free for personal use). The phone can then reach the server from anywhere:
+
+```
+http://<machine-name>:8765        # via MagicDNS
+```
+
+For HTTPS (nicer, and required for the offline service worker — plain `http://` on a LAN IP is not a secure context):
+
+```bash
+tailscale serve --bg 8765
+# → https://<machine-name>.<tailnet>.ts.net
+```
+
+### No computer at all — run it *on* the iPhone
+
+The backend is small enough to run on the phone itself inside [iSH](https://ish.app) (free, App Store); Safari talks to it over `localhost`. See [clients/ios/README.md](clients/ios/README.md) — install is four commands, nothing is compiled on-device.
+
+## Hosting it on the internet (HTTPS + login)
+
+Devlog ships optional single-user auth: set **`DEVLOG_PASSWORD`** and every request needs a login (90-day session cookie; API clients send `Authorization: Bearer <password>`). Unset, devlog behaves as before — no login, for localhost/LAN use. With a password set and HTTPS in front, hosting publicly is reasonable. Two ready-made setups, both serving the PWA from anywhere with full offline-shell support:
+
+- [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports: runs on any always-on machine at home; optional Cloudflare Access (Google login / email PIN) at the edge on top of the built-in password.
+- [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**: ~€4/mo box, automatic Let's Encrypt certificates, built-in password for auth.
+- [deploy/pythonanywhere/](deploy/pythonanywhere/README.md) — **PythonAnywhere**: free tier works (HTTPS at `you.pythonanywhere.com`), no server admin at all; deploys via a small WSGI bridge.
+
+> Never expose port 8765 directly without `DEVLOG_PASSWORD` — an open devlog is writable by anyone. And even with the password, keep TLS in front (the cookie and password travel in requests).
+
 ## Menu-bar tray (optional)
 
 ### macOS — native SwiftUI
@@ -178,6 +220,7 @@ make clean              # remove build artifacts (keeps data + db)
 | `DEVLOG_PORT` | `8765` | Bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | Where the SQLite file lives |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | Used by `devlog-mcp` to reach the backend |
+| `DEVLOG_PASSWORD` | *(unset — auth disabled)* | Enables login (web) / Bearer auth (API, `devlog-mcp`) |
 
 ## Project layout
 

@@ -35,6 +35,45 @@ window.addEventListener("appinstalled", () => {
   if (btn) btn.hidden = true;
 });
 
+// Show "Sign out" only when the server has password auth enabled.
+fetch("/auth/status").then((r) => r.ok ? r.json() : null).then((s) => {
+  if (!s || !s.auth_enabled) return;
+  const btn = document.getElementById("sign-out");
+  if (!btn) return;
+  btn.hidden = false;
+  btn.onclick = async () => {
+    await fetch("/auth/logout", { method: "POST" });
+    location.href = "/login";
+  };
+}).catch(() => {});
+
+// ---------- mobile navigation (phones, < 768px) ----------
+// The header hamburger toggles the sidebar drawer; style.css positions it
+// off-canvas via body[data-sidebar-open="1"]. Any tap inside the sidebar
+// (project row, Home, + New) closes the drawer — the listener sits on the
+// #sidebar element itself, so it survives renderSidebar()'s replaceChildren.
+function closeSidebarDrawer() { document.body.removeAttribute("data-sidebar-open"); }
+(function setupMobileNav() {
+  const toggle = document.getElementById("nav-toggle");
+  if (toggle) toggle.addEventListener("click", () => {
+    if (document.body.hasAttribute("data-sidebar-open")) closeSidebarDrawer();
+    else document.body.setAttribute("data-sidebar-open", "1");
+  });
+  const backdrop = document.getElementById("sidebar-backdrop");
+  if (backdrop) backdrop.addEventListener("click", closeSidebarDrawer);
+  const sidebar = document.getElementById("sidebar");
+  if (sidebar) sidebar.addEventListener("click", (e) => {
+    if (e.target.closest("button")) closeSidebarDrawer();
+  });
+})();
+
+// Mirror "an item is selected" onto <body> so style.css can swap the list
+// pane for the detail pane on phones (body[data-mobile-detail="1"]).
+function _applyMobileDetailAttr() {
+  if (state.selected) document.body.setAttribute("data-mobile-detail", "1");
+  else document.body.removeAttribute("data-mobile-detail");
+}
+
 // ---------- tiny utils ----------
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -53,6 +92,7 @@ const el = (tag, attrs = {}, ...kids) => {
 };
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
+  if (r.status === 401) { location.href = "/login"; throw new Error("401 not authenticated"); }
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   if (r.status === 204) return null;
   return r.json();
@@ -510,6 +550,7 @@ async function selectItem(id) {
   }
   // Now that an item is selected, apply focus body attr (if focusMode is on).
   _applyFocusBodyAttr();
+  _applyMobileDetailAttr();
   // mark selected
   for (const row of document.querySelectorAll(".list-row")) {
     if (row.textContent.includes("#" + id)) row.classList.add("selected");
@@ -529,6 +570,13 @@ function renderDetail() {
   const draft = state.drafts[it.id] || {};
   const titleVal = draft.title ?? it.title ?? "";
   const bodyVal = draft.body ?? it.body ?? "";
+
+  // On phones the detail replaces the list; give it a way back.
+  const backBar = el("div", { class: "md:hidden sticky top-0 z-10 bg-white border-b border-slate-200 px-3 py-2" },
+    el("button", {
+      class: "text-sm text-slate-600 flex items-center gap-1 hover:text-slate-900",
+      onclick: () => { clearSel(); renderDetail(); },
+    }, "← Back to list"));
 
   const header = el("div", { class: "px-6 pt-5 pb-3 border-b border-slate-200" },
     el("div", { class: "flex items-center gap-2 text-xs text-slate-500" },
@@ -568,7 +616,7 @@ function renderDetail() {
   const actions = renderActions(it);
   const refs = renderRefs(it);
 
-  d.append(header);
+  d.append(backBar, header);
   if (!state.focusMode) d.append(meta, renderTagsEditor(it));
   if (!state.focusMode && it.kind === "task") d.append(renderTimeBlock(it));
   d.append(editor);
@@ -1035,7 +1083,7 @@ function renderEditor(it, bodyVal) {
     return outer;
   }
 
-  const wrap = el("div", { class: "grid grid-cols-2 gap-4 min-h-[300px]" });
+  const wrap = el("div", { class: "grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[300px]" });
 
   const ta = el("textarea", {
     class: "w-full h-full min-h-[300px] font-mono text-sm border border-slate-200 rounded p-3 focus:outline-none focus:ring-2 focus:ring-blue-100",
@@ -1645,6 +1693,7 @@ function clearSel() {
   // Focus mode is only "on" while an item is being viewed; clear the body
   // attribute so the sidebar reappears as soon as the user navigates away.
   if (typeof _applyFocusBodyAttr === "function") _applyFocusBodyAttr();
+  if (typeof _applyMobileDetailAttr === "function") _applyMobileDetailAttr();
 }
 
 // (Header search and global "+ New" buttons removed — search lives inside Home, "+ New" lives in the sidebar.)
@@ -2819,7 +2868,7 @@ function statsSection(today, week, month, periods, weekR, monthR) {
 
   return el("section", { id: "stats-block" },
     sectionHeader("Stats", "Auto-pauses doing tasks at end of work day"),
-    el("div", { class: "grid grid-cols-3 gap-3" },
+    el("div", { class: "grid grid-cols-1 sm:grid-cols-3 gap-3" },
       card(todayTitle, todayLocalIso(), today),
       card(weekTitle, `${weekR.range_from} → ${weekR.range_to}`, week),
       card(monthTitle, `${monthR.range_from} → ${monthR.range_to}`, month),

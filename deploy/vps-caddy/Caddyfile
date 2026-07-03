@@ -1,0 +1,4 @@
+{$DEVLOG_DOMAIN} {
+	reverse_proxy devlog:8765
+	encode gzip
+}

@@ -238,3 +238,7 @@ For anyone catching up on changes after `SPECIFICATION.md` was first written:
 - **Linux tray click fix** — keep the `Gtk.Menu` referenced from `self`; use `new_with_label`; ship a symbolic SVG so the icon recolors per theme.
 - **Web UI niceties** — Esc closes any modal; Tab/Shift+Tab cycles the New-item tabs when focus is on the strip (not in a form field); resizable sidebar/detail splitter with `localStorage` persistence; render-error fallback in the detail pane.
 - **AGENTS.md / SPECIFICATION.md / ARCHITECTURE.md** — three-layer documentation, scoped from how-to-use → what-it-is → big-picture.
+- **Phone-usable web UI** — under 768px the three panes collapse to one (sidebar drawer behind a hamburger, full-screen list ↔ detail with a back bar); PNG icons for iOS (`apple-touch-icon` ignores SVG); safe-area insets; 16px form fields to stop Safari's focus zoom.
+- **Optional auth** (`DEVLOG_PASSWORD`, spec §4.11) — HMAC-signed 90-day session cookie + `/login` page for browsers, `Authorization: Bearer` for API clients/MCP. Unset = the old no-auth localhost behavior.
+- **Hosting recipes** (`deploy/`) — Cloudflare Tunnel (free, no open ports), VPS + Caddy (auto-TLS), PythonAnywhere (free tier, WSGI bridge via `a2wsgi`).
+- **Runs on the phone itself** (`clients/ios/`) — iSH walkthrough using Alpine's prebuilt packages; `selectolax` became an optional import with a regex fallback in `link_fetcher.py`, and `python -m devlog` (`__main__.py`) runs straight from a checkout.
