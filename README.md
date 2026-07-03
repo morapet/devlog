@@ -151,6 +151,7 @@ Devlog ships optional single-user auth: set **`DEVLOG_PASSWORD`** and every requ
 
 - [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports: runs on any always-on machine at home; optional Cloudflare Access (Google login / email PIN) at the edge on top of the built-in password.
 - [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**: ~€4/mo box, automatic Let's Encrypt certificates, built-in password for auth.
+- [deploy/pythonanywhere/](deploy/pythonanywhere/README.md) — **PythonAnywhere**: free tier works (HTTPS at `you.pythonanywhere.com`), no server admin at all; deploys via a small WSGI bridge.
 
 > Never expose port 8765 directly without `DEVLOG_PASSWORD` — an open devlog is writable by anyone. And even with the password, keep TLS in front (the cookie and password travel in requests).
 
