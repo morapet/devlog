@@ -1,0 +1,19 @@
+# devlog + Cloudflare Tunnel: HTTPS URL with no open ports — works on a home
+# machine behind any router/NAT. See README.md in this directory.
+services:
+  devlog:
+    image: ghcr.io/morapet/devlog:latest
+    restart: unless-stopped
+    environment:
+      # Optional but recommended even behind Cloudflare Access:
+      # defense in depth costs one password prompt every 90 days.
+      DEVLOG_PASSWORD: ${DEVLOG_PASSWORD:-}
+    volumes:
+      - ./data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN in .env}

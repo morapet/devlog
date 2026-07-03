@@ -2,7 +2,7 @@
 // Safari (iOS 16.4+) and survive offline access to the app shell. The backend
 // API is always fetched live — caching it would silently serve stale data.
 
-const VERSION = "devlog-shell-v4";
+const VERSION = "devlog-shell-v5";
 
 // The app shell — everything required to bootstrap the UI even offline.
 // Versioned via VERSION so a new deploy invalidates the previous cache.
@@ -21,6 +21,8 @@ const SHELL = [
 // Path prefixes that must always go to network (never cached). All of these
 // produce dynamic data; serving a stale response would be a bug, not a feature.
 const API_PREFIXES = [
+    "/auth",
+    "/login",
     "/health",
     "/projects",
     "/items",
@@ -69,7 +71,9 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
         caches.match(req).then((cached) => {
             const fetched = fetch(req).then((resp) => {
-                if (resp && resp.ok && resp.type === "basic") {
+                // Never cache redirected responses — a login redirect must not
+                // shadow the app shell.
+                if (resp && resp.ok && resp.type === "basic" && !resp.redirected) {
                     const copy = resp.clone();
                     caches.open(VERSION).then((c) => c.put(req, copy)).catch(() => {});
                 }

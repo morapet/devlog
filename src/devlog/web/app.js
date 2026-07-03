@@ -35,6 +35,18 @@ window.addEventListener("appinstalled", () => {
   if (btn) btn.hidden = true;
 });
 
+// Show "Sign out" only when the server has password auth enabled.
+fetch("/auth/status").then((r) => r.ok ? r.json() : null).then((s) => {
+  if (!s || !s.auth_enabled) return;
+  const btn = document.getElementById("sign-out");
+  if (!btn) return;
+  btn.hidden = false;
+  btn.onclick = async () => {
+    await fetch("/auth/logout", { method: "POST" });
+    location.href = "/login";
+  };
+}).catch(() => {});
+
 // ---------- mobile navigation (phones, < 768px) ----------
 // The header hamburger toggles the sidebar drawer; style.css positions it
 // off-canvas via body[data-sidebar-open="1"]. Any tap inside the sidebar
@@ -80,6 +92,7 @@ const el = (tag, attrs = {}, ...kids) => {
 };
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
+  if (r.status === 401) { location.href = "/login"; throw new Error("401 not authenticated"); }
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   if (r.status === 204) return null;
   return r.json();

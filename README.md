@@ -141,7 +141,18 @@ tailscale serve --bg 8765
 # → https://<machine-name>.<tailnet>.ts.net
 ```
 
-> **Warning — no authentication.** Devlog has no login. Never expose port 8765 to the public internet (no router port-forwarding, no `0.0.0.0` on a public VPS). A LAN behind your router or a Tailscale tailnet is the intended perimeter; if you must go public, put an authenticating reverse proxy (Caddy + basic auth, Cloudflare Access, …) in front.
+### No computer at all — run it *on* the iPhone
+
+The backend is small enough to run on the phone itself inside [iSH](https://ish.app) (free, App Store); Safari talks to it over `localhost`. See [clients/ios/README.md](clients/ios/README.md) — install is four commands, nothing is compiled on-device.
+
+## Hosting it on the internet (HTTPS + login)
+
+Devlog ships optional single-user auth: set **`DEVLOG_PASSWORD`** and every request needs a login (90-day session cookie; API clients send `Authorization: Bearer <password>`). Unset, devlog behaves as before — no login, for localhost/LAN use. With a password set and HTTPS in front, hosting publicly is reasonable. Two ready-made setups, both serving the PWA from anywhere with full offline-shell support:
+
+- [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports: runs on any always-on machine at home; optional Cloudflare Access (Google login / email PIN) at the edge on top of the built-in password.
+- [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**: ~€4/mo box, automatic Let's Encrypt certificates, built-in password for auth.
+
+> Never expose port 8765 directly without `DEVLOG_PASSWORD` — an open devlog is writable by anyone. And even with the password, keep TLS in front (the cookie and password travel in requests).
 
 ## Menu-bar tray (optional)
 
@@ -208,6 +219,7 @@ make clean              # remove build artifacts (keeps data + db)
 | `DEVLOG_PORT` | `8765` | Bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | Where the SQLite file lives |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | Used by `devlog-mcp` to reach the backend |
+| `DEVLOG_PASSWORD` | *(unset — auth disabled)* | Enables login (web) / Bearer auth (API, `devlog-mcp`) |
 
 ## Project layout
 

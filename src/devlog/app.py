@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from . import auth
 from .api.attachments import router as attachments_router
 from .api.items import router as items_router
 from .api.projects import router as projects_router
@@ -19,6 +20,10 @@ from .db import conn
 WEB_DIR = Path(__file__).parent / "web"
 
 app = FastAPI(title="devlog", version="0.1.0")
+
+# Optional password gate — active only when DEVLOG_PASSWORD is set (see auth.py).
+app.middleware("http")(auth.middleware)
+app.include_router(auth.router)
 
 
 @app.on_event("startup")

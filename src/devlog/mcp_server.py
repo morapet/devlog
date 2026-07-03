@@ -112,7 +112,13 @@ in the devlog repo.
 mcp = FastMCP("devlog", instructions=INSTRUCTIONS)
 
 # A single shared client. httpx.Client is thread-safe for use across requests.
-_client = httpx.Client(base_url=BASE_URL, timeout=20.0)
+# If the backend is password-protected (DEVLOG_PASSWORD on the server), set
+# the same value here so the MCP server can authenticate.
+_headers = {}
+_password = os.environ.get("DEVLOG_PASSWORD", "")
+if _password:
+    _headers["Authorization"] = f"Bearer {_password}"
+_client = httpx.Client(base_url=BASE_URL, timeout=20.0, headers=_headers)
 
 
 def _req(method: str, path: str, **kwargs) -> Any:
