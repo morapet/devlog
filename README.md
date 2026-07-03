@@ -113,6 +113,36 @@ The server script:
 
 See [clients/linux-server/README.md](clients/linux-server/README.md) for status / upgrade / uninstall.
 
+## Use from your iPhone (or any phone)
+
+The web UI is a mobile-friendly PWA — run the backend on any machine your phone can reach and it behaves like a native app. There is no iOS build to install; Safari is the client.
+
+### Same Wi-Fi (home / office LAN)
+
+1. Make the server reachable from the network:
+   - **Docker** already binds `0.0.0.0` — nothing to do.
+   - **Local Python**: `DEVLOG_HOST=0.0.0.0 make dev` (the default bind is `127.0.0.1`, which the phone can't reach).
+2. Find the machine's LAN IP: `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux).
+3. On the iPhone, open `http://<that-ip>:8765` in Safari.
+4. **Add to Home Screen**: tap Share → *Add to Home Screen*. Devlog launches full-screen with its own icon, indistinguishable from a native app.
+
+### Away from home — Tailscale (recommended)
+
+Install [Tailscale](https://tailscale.com) on the server machine and the iPhone (App Store, free for personal use). The phone can then reach the server from anywhere:
+
+```
+http://<machine-name>:8765        # via MagicDNS
+```
+
+For HTTPS (nicer, and required for the offline service worker — plain `http://` on a LAN IP is not a secure context):
+
+```bash
+tailscale serve --bg 8765
+# → https://<machine-name>.<tailnet>.ts.net
+```
+
+> **Warning — no authentication.** Devlog has no login. Never expose port 8765 to the public internet (no router port-forwarding, no `0.0.0.0` on a public VPS). A LAN behind your router or a Tailscale tailnet is the intended perimeter; if you must go public, put an authenticating reverse proxy (Caddy + basic auth, Cloudflare Access, …) in front.
+
 ## Menu-bar tray (optional)
 
 ### macOS — native SwiftUI

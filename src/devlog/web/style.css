@@ -70,6 +70,58 @@ body[data-focus="1"] #detail {
   width: 100%;
 }
 
+/* ---------- Mobile (phones, < 768px) ----------
+   The desktop 3-pane layout (sidebar | list | detail) becomes:
+   - sidebar: off-canvas drawer, toggled via the header hamburger
+     (body[data-sidebar-open="1"]) with a tap-to-close backdrop;
+   - list and detail: one pane at a time — the list fills the screen,
+     selecting an item slides the detail in (body[data-mobile-detail="1"]),
+     a back bar in the detail returns to the list. */
+#sidebar-backdrop { display: none; }
+
+@media (max-width: 767px) {
+  #splitter { display: none !important; }
+  #list-pane { width: 100% !important; border-right: 0; }
+  #detail { display: none; }
+  body[data-mobile-detail="1"] #list-pane { display: none; }
+  body[data-mobile-detail="1"] #detail:not(.hidden) { display: block; }
+
+  #sidebar {
+    position: fixed;
+    top: calc(3rem + env(safe-area-inset-top, 0px));
+    bottom: 0;
+    left: 0;
+    z-index: 30;
+    width: 16rem;
+    transform: translateX(-100%);
+    transition: transform 0.15s ease-out;
+    box-shadow: 0 10px 25px rgb(0 0 0 / 0.15);
+  }
+  body[data-sidebar-open="1"] #sidebar { transform: translateX(0); }
+  body[data-sidebar-open="1"] #sidebar-backdrop {
+    display: block;
+    position: fixed;
+    top: calc(3rem + env(safe-area-inset-top, 0px));
+    right: 0; bottom: 0; left: 0;
+    z-index: 25;
+    background: rgb(0 0 0 / 0.3);
+  }
+
+  /* iOS Safari zooms the page when a focused field's font-size is < 16px. */
+  input, select, textarea { font-size: 16px !important; }
+}
+
+/* Standalone PWA on iPhone: pad past the notch / home indicator. */
+header {
+  padding-top: env(safe-area-inset-top, 0px);
+  height: calc(3rem + env(safe-area-inset-top, 0px)) !important;
+}
+body {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
 /* tab buttons */
 .tab-btn {
   padding: 0.4rem 0.75rem;
