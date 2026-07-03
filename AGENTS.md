@@ -35,7 +35,7 @@ curl -s http://127.0.0.1:8765/health
 # {"ok":true}
 ```
 
-All endpoints are JSON in / JSON out, no auth, localhost only. Override the base URL with `DEVLOG_BASE_URL`.
+All endpoints are JSON in / JSON out, localhost only by default. Override the base URL with `DEVLOG_BASE_URL`. If the backend has `DEVLOG_PASSWORD` set (hosted setups), send `Authorization: Bearer <password>` on every request — `devlog-mcp` does this automatically when the same env var is set.
 
 ---
 

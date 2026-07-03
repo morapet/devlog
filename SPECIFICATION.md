@@ -147,7 +147,7 @@ FTS5 over the columns: `title, body, url, link_description, tags`. `tags` is con
 
 ## 4. HTTP API
 
-JSON in / JSON out, `application/json`. All endpoints are unauthenticated and bound to `127.0.0.1` by default.
+JSON in / JSON out, `application/json`. Bound to `127.0.0.1` by default. Endpoints are unauthenticated unless `DEVLOG_PASSWORD` is set — see §4.11.
 
 ### 4.1 Projects
 
@@ -259,6 +259,24 @@ Response:
 ### 4.10 Health
 
 `GET /health` → `{"ok": true}`.
+
+### 4.11 Auth (optional, single user)
+
+Enabled only when the `DEVLOG_PASSWORD` env var is set; otherwise every route behaves as if this section didn't exist.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/login` | standalone login page (302 to `/` when auth is disabled) |
+| POST | `/auth/login` | body `{password}` → 204 + session cookie, or 401 (after a 0.5 s delay) |
+| POST | `/auth/logout` | 204, clears the cookie |
+| GET | `/auth/status` | `{auth_enabled, authenticated}` — never requires auth |
+
+Mechanics (see `auth.py`):
+
+- Session = `<unix-expiry>.<hmac-sha256>` cookie (`devlog_session`, 90 days, HttpOnly, SameSite=Lax, Secure when the request arrived over https or `X-Forwarded-Proto: https`). Signing key is a random 32-byte per-install file `session-secret` next to the DB, created on first use — restarts don't invalidate sessions.
+- Non-browser clients authenticate every request with `Authorization: Bearer <password>` (constant-time compare). `devlog-mcp` sends this automatically when `DEVLOG_PASSWORD` is set in its environment.
+- Open paths (no auth): `/login`, `/auth/*`, `/health`, `/sw.js`, `/manifest.json`, `/static/*` — the PWA shell and login flow only; every data endpoint (including `/docs` and `/openapi.json`) requires auth.
+- Unauthenticated requests: browser navigations (`Sec-Fetch-Mode: navigate`, or `Accept: text/html` when the header is absent) get a 302 to `/login`; everything else gets 401 JSON. This split keeps the service worker from ever caching the login redirect as the app shell.
 
 ---
 
@@ -519,6 +537,7 @@ The `project` argument on each tool accepts either an int id or a slug; the serv
 | `DEVLOG_PORT` | `8765` | bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | SQLite + backups dir |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | used by `devlog-mcp` and the Linux tray |
+| `DEVLOG_PASSWORD` | *(unset — auth disabled)* | enables login + Bearer auth (§4.11); `devlog-mcp` reads it too |
 | `DEVLOG_TRAY_ICON` | `devlog-tray-symbolic` | XDG icon name for the Linux tray |
 | `DRAWIO_VERSION` | `v30.0.2` | tag used by `scripts/install-drawio.sh` |
 
@@ -584,7 +603,7 @@ CI builds run on every push: ruff lint, Python smoke (boots the server with `DEV
 
 ## 14. Out of scope (explicit non-goals)
 
-- Multi-user / auth / TLS / cloud sync. The whole design assumes a single user on `127.0.0.1`.
+- Multi-user / TLS / cloud sync. The design assumes a single user; optional single-user password auth exists (§4.11) for hosted setups, but TLS is always delegated to a reverse proxy or tunnel (see `deploy/`), and there are no accounts, roles, or sharing.
 - Mobile apps.
 - Real-time push to clients. All clients poll (Mac tray every 5 s, web Home every 15 s, Linux tray every 5 s).
 - Calendar / due-date notifications.
