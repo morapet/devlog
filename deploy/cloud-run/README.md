@@ -51,6 +51,56 @@ The deploy prints the service URL. Open it, sign in (the password is in
 the service's env vars: Cloud Run console → devlog → Revisions →
 Variables), and on the iPhone: Share → **Add to Home Screen**.
 
+## CI/CD from GitHub Actions
+
+`.github/workflows/deploy-cloud-run.yml` redeploys on every push to `main`
+(and on demand from the Actions tab). It builds the image from source in CI
+and pushes it to Artifact Registry — Cloud Run can't pull from GHCR. The
+job only activates when the `GCP_PROJECT` repo variable exists, so nothing
+happens on forks or before you finish this setup.
+
+One-time GCP setup (Cloud Shell; assumes the bucket from the Deploy section
+above already exists):
+
+```bash
+REGION=europe-west1
+DEPLOYER=devlog-deployer@$GOOGLE_CLOUD_PROJECT.iam.gserviceaccount.com
+PROJECT_NUMBER=$(gcloud projects describe $GOOGLE_CLOUD_PROJECT --format='value(projectNumber)')
+
+gcloud services enable run.googleapis.com artifactregistry.googleapis.com
+
+# Image repository
+gcloud artifacts repositories create devlog --repository-format=docker --location=$REGION
+
+# Deployer service account: push images, deploy the service, act as the runtime SA
+gcloud iam service-accounts create devlog-deployer
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member=serviceAccount:$DEPLOYER --role=roles/run.admin
+gcloud projects add-iam-policy-binding $GOOGLE_CLOUD_PROJECT \
+    --member=serviceAccount:$DEPLOYER --role=roles/artifactregistry.writer
+gcloud iam service-accounts add-iam-policy-binding \
+    $PROJECT_NUMBER-compute@developer.gserviceaccount.com \
+    --member=serviceAccount:$DEPLOYER --role=roles/iam.serviceAccountUser
+
+# Key for GitHub (paste the file's contents into the GCP_SA_KEY secret)
+gcloud iam service-accounts keys create devlog-deployer-key.json --iam-account=$DEPLOYER
+cat devlog-deployer-key.json
+```
+
+Then in GitHub → repo **Settings → Secrets and variables → Actions**:
+
+| Kind | Name | Value |
+|---|---|---|
+| Variable | `GCP_PROJECT` | your project id |
+| Variable | `GCP_REGION` | optional, defaults to `europe-west1` |
+| Variable | `DEVLOG_BUCKET` | the GCS bucket name from the Deploy section |
+| Secret | `GCP_SA_KEY` | the JSON key file's contents |
+| Secret | `DEVLOG_PASSWORD` | your login password |
+
+Delete `devlog-deployer-key.json` from Cloud Shell after pasting it. (The
+key is long-lived; if you ever want keyless auth, the workflow's `auth`
+step also supports Workload Identity Federation.)
+
 ## The fine print
 
 - **`--max-instances 1` is mandatory.** SQLite has one writer; two Cloud
