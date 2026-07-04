@@ -1,0 +1,7 @@
+# Litestream config for Cloud Run. The replica URL comes from the
+# LITESTREAM_REPLICA_URL env var set at deploy time, e.g.
+#   gcs://my-devlog-bucket/devlog
+dbs:
+  - path: /data/devlog.db
+    replicas:
+      - url: ${LITESTREAM_REPLICA_URL}
