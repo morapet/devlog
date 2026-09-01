@@ -147,7 +147,7 @@ FTS5 over the columns: `title, body, url, link_description, tags`. `tags` is con
 
 ## 4. HTTP API
 
-JSON in / JSON out, `application/json`. Bound to `127.0.0.1` by default. Endpoints are unauthenticated unless `DEVLOG_PASSWORD` is set — see §4.11.
+JSON in / JSON out, `application/json`. Bound to `127.0.0.1` by default. Loopback requests are unauthenticated; remote requests need a shared secret unless `DEVLOG_AUTH=off` — see §4.11.
 
 ### 4.1 Projects
 
@@ -260,23 +260,22 @@ Response:
 
 `GET /health` → `{"ok": true}`.
 
-### 4.11 Auth (optional, single user)
+### 4.11 Auth (shared secret, single user)
 
-Enabled only when the `DEVLOG_PASSWORD` env var is set; otherwise every route behaves as if this section didn't exist.
+Controlled by `DEVLOG_AUTH`: `auto` (default) trusts loopback and requires the shared secret for remote requests; `always` requires it even on loopback; `off` disables auth entirely. The secret is taken from `DEVLOG_AUTH_TOKEN`, or auto-generated once into `<data_dir>/auth.token` (chmod 600) — print it with `devlog --print-token`.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/login` | standalone login page (302 to `/` when auth is disabled) |
-| POST | `/auth/login` | body `{password}` → 204 + session cookie, or 401 (after a 0.5 s delay) |
-| POST | `/auth/logout` | 204, clears the cookie |
-| GET | `/auth/status` | `{auth_enabled, authenticated}` — never requires auth |
+| POST | `/auth/login` | body `{token}` → 200 `{ok:true}` + session cookie, or 401 `{detail:"invalid token"}` |
+| POST | `/auth/logout` | 200, clears the cookie |
+| GET | `/auth/status` | `{required, authenticated}` — never requires auth |
 
 Mechanics (see `auth.py`):
 
-- Session = `<unix-expiry>.<hmac-sha256>` cookie (`devlog_session`, 90 days, HttpOnly, SameSite=Lax, Secure when the request arrived over https or `X-Forwarded-Proto: https`). Signing key is a random 32-byte per-install file `session-secret` next to the DB, created on first use — restarts don't invalidate sessions.
-- Non-browser clients authenticate every request with `Authorization: Bearer <password>` (constant-time compare). `devlog-mcp` sends this automatically when `DEVLOG_PASSWORD` is set in its environment.
-- Open paths (no auth): `/login`, `/auth/*`, `/health`, `/sw.js`, `/manifest.json`, `/static/*` — the PWA shell and login flow only; every data endpoint (including `/docs` and `/openapi.json`) requires auth.
-- Unauthenticated requests: browser navigations (`Sec-Fetch-Mode: navigate`, or `Accept: text/html` when the header is absent) get a 302 to `/login`; everything else gets 401 JSON. This split keeps the service worker from ever caching the login redirect as the app shell.
+- Session = `<unix-expiry>.<hmac-sha256>` cookie (`devlog_session`, 30 days, HttpOnly, SameSite=Lax). The signing key is the shared secret itself, so sessions survive restarts as long as the secret does.
+- Non-browser clients authenticate every request with `Authorization: Bearer <token>` (or `X-Devlog-Token: <token>`), constant-time compared. `devlog-mcp` sends the Bearer header automatically when `DEVLOG_AUTH_TOKEN` is set in its environment.
+- Open paths (no auth): `/`, `/health`, `/sw.js`, `/manifest.json`, `/favicon.ico`, `/apple-touch-icon.png`, and the `/static/*`, `/share/*`, `/shares/*`, `/auth/*` prefixes — the PWA shell, share links, and the auth endpoints; every data endpoint (including `/docs` and `/openapi.json`) requires auth when it isn't loopback-trusted.
+- Unauthenticated requests get a 401 JSON response. The web UI reacts by showing a login overlay that POSTs the token to `/auth/login`; there is no server-rendered login page, so the service worker never caches a login redirect as the app shell.
 
 ---
 
@@ -537,7 +536,8 @@ The `project` argument on each tool accepts either an int id or a slug; the serv
 | `DEVLOG_PORT` | `8765` | bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | SQLite + backups dir |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | used by `devlog-mcp` and the Linux tray |
-| `DEVLOG_PASSWORD` | *(unset — auth disabled)* | enables login + Bearer auth (§4.11); `devlog-mcp` reads it too |
+| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback + requires the token remotely; `always` everywhere; `off` disables (§4.11) |
+| `DEVLOG_AUTH_TOKEN` | *(auto-generated to `auth.token`)* | shared secret for remote access (§4.11); `devlog-mcp` reads it too |
 | `DEVLOG_TRAY_ICON` | `devlog-tray-symbolic` | XDG icon name for the Linux tray |
 | `DRAWIO_VERSION` | `v30.0.2` | tag used by `scripts/install-drawio.sh` |
 

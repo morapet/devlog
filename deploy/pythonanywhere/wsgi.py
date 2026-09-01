@@ -14,9 +14,11 @@ import sys
 # --- adjust these two ---------------------------------------------------
 CHECKOUT = os.path.expanduser("~/devlog")          # where you cloned the repo
 os.environ.setdefault("DEVLOG_DATA_DIR", os.path.expanduser("~/devlog-data"))
-# Set the password in the Web tab's environment variables section instead of
-# hard-coding it here if you prefer; either works.
-# os.environ.setdefault("DEVLOG_PASSWORD", "change-me")
+# Requests arrive through PythonAnywhere's proxy (a non-loopback client), so
+# devlog requires its shared secret. Pin it to a known value here or in the Web
+# tab's environment variables; otherwise it's auto-generated (read it with
+# `devlog --print-token`).
+# os.environ.setdefault("DEVLOG_AUTH_TOKEN", "change-me")
 # ------------------------------------------------------------------------
 
 sys.path.insert(0, os.path.join(CHECKOUT, "src"))

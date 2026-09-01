@@ -2,7 +2,7 @@
 
 [PythonAnywhere](https://www.pythonanywhere.com) works — including on the
 **free tier**: you get HTTPS at `yourusername.pythonanywhere.com` out of the
-box, and devlog's `DEVLOG_PASSWORD` login makes it safe to expose. Their
+box, and devlog's `DEVLOG_AUTH_TOKEN` login makes it safe to expose. Their
 standard web apps speak WSGI while devlog is ASGI (FastAPI), so the deploy
 goes through the small [`wsgi.py`](wsgi.py) bridge in this directory
 (a2wsgi) — verified against the full API, auth flow, and FTS search.
@@ -15,7 +15,7 @@ goes through the small [`wsgi.py`](wsgi.py) bridge in this directory
 git clone --depth 1 https://github.com/morapet/devlog.git
 pip3 install --user fastapi httpx a2wsgi
 mkdir -p ~/devlog-data
-python3 -c "import secrets; print('DEVLOG_PASSWORD:', secrets.token_urlsafe(18))"   # note it down
+python3 -c "import secrets; print('DEVLOG_AUTH_TOKEN:', secrets.token_urlsafe(18))"   # note it down
 ```
 
 **2. Web tab → Add a new web app** → *Manual configuration* → pick the same
@@ -23,8 +23,8 @@ Python version `pip3` used above (`pip3 --version` shows it).
 
 **3. Edit the WSGI configuration file** (linked from the Web tab): delete
 its contents and paste in [`wsgi.py`](wsgi.py). Adjust `CHECKOUT` if you
-cloned somewhere other than `~/devlog`, and set your password — either
-uncomment the `DEVLOG_PASSWORD` line, or add it in the Web tab's
+cloned somewhere other than `~/devlog`, and set your token — either
+uncomment the `DEVLOG_AUTH_TOKEN` line, or add it in the Web tab's
 environment-variables section if your account has one.
 
 **4. Hit Reload** on the Web tab. Open
@@ -33,7 +33,7 @@ Share → **Add to Home Screen**.
 
 ## Free-tier fine print
 
-- **Set `DEVLOG_PASSWORD`.** The URL is public; without the password anyone
+- **Set `DEVLOG_AUTH_TOKEN`.** The URL is public; without the token anyone
   who finds it can read and write your data.
 - **Keep-alive**: free web apps show a "Run until 3 months from today"
   button on the Web tab — click it when you visit, or the app is disabled

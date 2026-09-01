@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- macOS app icon: the web UI's checklist glyph, inset ~9% on a transparent
+     canvas so the rounded square sits inside the macOS icon grid. Rendered to
+     AppIcon.icns by make-icon.sh. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+    <g transform="translate(94 94) scale(1.6328125)">
+        <rect width="512" height="512" rx="96" fill="#0f172a"/>
+        <g fill="none" stroke="#f8fafc" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="96" y="96" width="320" height="320" rx="32"/>
+            <polyline points="140,196 174,230 234,170"/>
+            <polyline points="140,316 174,350 234,290"/>
+            <line x1="276" y1="196" x2="370" y2="196"/>
+            <line x1="276" y1="316" x2="370" y2="316"/>
+        </g>
+    </g>
+</svg>

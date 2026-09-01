@@ -9,10 +9,13 @@ struct APIError: Error, LocalizedError {
 actor APIClient {
     static let shared = APIClient()
 
-    private let baseURL: URL
+    private var baseURL: URL
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+
+    /// Point the client at a different backend (mode/port switch).
+    func setBaseURL(_ url: URL) { self.baseURL = url }
 
     init(baseURL: URL = URL(string: "http://127.0.0.1:8765")!) {
         self.baseURL = baseURL

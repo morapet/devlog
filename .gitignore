@@ -24,3 +24,7 @@ src/devlog/web/vendor/drawio/
 
 # macOS tray build artifacts
 clients/mac-tray/.build/
+
+# Claude Code — personal, machine-specific config (contains local paths)
+.claude/settings.local.json
+.mcp.json

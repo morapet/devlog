@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS items (
     blocked_reason     TEXT,
     done_at            TEXT,
     doing_started_at   TEXT,
+    estimate_minutes   INTEGER,
     -- link fields
     url                TEXT,
     link_description   TEXT,
@@ -57,6 +58,17 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT
 );
+
+-- Read-only share links: a random token grants a time-limited, read-only view
+-- of a single item (focus mode) to anyone who can reach the backend.
+CREATE TABLE IF NOT EXISTS shares (
+    token       TEXT PRIMARY KEY,
+    item_id     INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL,
+    expires_at  TEXT NOT NULL,
+    revoked     INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_shares_item ON shares(item_id);
 
 CREATE TABLE IF NOT EXISTS work_sessions (
     id          INTEGER PRIMARY KEY,
@@ -160,6 +172,23 @@ def conn() -> sqlite3.Connection:
     return c
 
 
+def ensure_schema_current(c: sqlite3.Connection | None = None) -> None:
+    """Re-apply the schema DDL and migrations on ``c`` (or the current conn).
+
+    Idempotent — used after a restore, whose backup file may predate a migration.
+    """
+    c = c or conn()
+    c.executescript(SCHEMA)
+    _migrate(c)
+
+
+@contextmanager
+def write_lock():
+    """Serialize an in-process bulk write (restore) against tx() writers."""
+    with _write_lock:
+        yield
+
+
 def _migrate(c: sqlite3.Connection) -> None:
     cols = {r["name"] for r in c.execute("PRAGMA table_info(items)").fetchall()}
     if "is_pinned" not in cols:
@@ -167,6 +196,8 @@ def _migrate(c: sqlite3.Connection) -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_items_pinned ON items(is_pinned) WHERE is_pinned = 1")
     if "display_label" not in cols:
         c.execute("ALTER TABLE items ADD COLUMN display_label TEXT")
+    if "estimate_minutes" not in cols:
+        c.execute("ALTER TABLE items ADD COLUMN estimate_minutes INTEGER")
 
     project_cols = {r["name"] for r in c.execute("PRAGMA table_info(projects)").fetchall()}
     if "parent_id" not in project_cols:

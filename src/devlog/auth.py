@@ -1,201 +1,132 @@
-"""Optional single-user password auth.
+"""Lightweight single-secret authentication.
 
-Set DEVLOG_PASSWORD to enable. When unset (the default), devlog behaves as
-before — no login, intended for localhost / trusted-LAN use. When set, every
-request must carry a valid session cookie (browser, via /login) or an
-`Authorization: Bearer <password>` header (MCP server, scripts).
+Model: the owner's own machine is trusted (loopback), share links are public,
+and everything else requires a shared secret when the request comes from another
+device. This protects the API once the backend is bound to the LAN (0.0.0.0)
+without adding friction for localhost clients (the browser on this machine, the
+MCP server, the native app in Managed mode).
 
-Sessions are `<expiry>.<hmac>` tokens signed with a random per-install secret
-kept next to the database, so restarting the server doesn't log anyone out.
+The secret is a random token, taken from DEVLOG_AUTH_TOKEN or auto-generated
+once into <data_dir>/auth.token (chmod 600). Retrieve it with `devlog --print-token`.
+
+Modes (env DEVLOG_AUTH):
+    auto   (default) trust loopback, require the secret for remote requests
+    always require the secret even on loopback
+    off    disable auth entirely
 """
+
 import hashlib
 import hmac
 import os
 import secrets
 import time
-
-from fastapi import APIRouter, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pathlib import Path
 
 from .config import data_dir
 
-PASSWORD = os.environ.get("DEVLOG_PASSWORD", "")
+SESSION_COOKIE = "devlog_session"
+SESSION_TTL = 30 * 24 * 3600  # 30 days
 
-COOKIE = "devlog_session"
-SESSION_DAYS = 90
+# Paths reachable without auth: the app shell, health, the PWA bits, static
+# assets, the auth endpoints, and — crucially — share links.
+_PUBLIC_EXACT = {"/", "/health", "/sw.js", "/manifest.json", "/favicon.ico", "/apple-touch-icon.png"}
+_PUBLIC_PREFIX = ("/static/", "/share/", "/shares/", "/auth/")
 
-# Paths that must work without auth: the login flow itself, health checks,
-# and the static app shell (no user data lives there; the login page and the
-# PWA bootstrap need it).
-_OPEN_PREFIXES = ("/auth/", "/static/")
-_OPEN_PATHS = ("/login", "/health", "/sw.js", "/manifest.json")
+_secret_cache: str | None = None
 
 
-def _secret() -> bytes:
-    """Random per-install signing key, created on first use."""
-    path = data_dir() / "session-secret"
+def auth_mode() -> str:
+    m = os.environ.get("DEVLOG_AUTH", "auto").lower()
+    return m if m in ("auto", "always", "off") else "auto"
+
+
+def _token_file() -> Path:
+    return data_dir() / "auth.token"
+
+
+def get_secret() -> str:
+    """The shared secret. Env wins; otherwise read/create the token file."""
+    global _secret_cache
+    env = os.environ.get("DEVLOG_AUTH_TOKEN")
+    if env:
+        return env
+    if _secret_cache:
+        return _secret_cache
+    f = _token_file()
     try:
-        return path.read_bytes()
-    except FileNotFoundError:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        key = secrets.token_bytes(32)
-        path.write_bytes(key)
-        try:
-            path.chmod(0o600)
-        except OSError:
-            pass
-        return key
-
-
-def _sign(expiry: int) -> str:
-    mac = hmac.new(_secret(), str(expiry).encode(), hashlib.sha256).hexdigest()
-    return f"{expiry}.{mac}"
-
-
-def _valid_session(token: str | None) -> bool:
-    if not token or "." not in token:
-        return False
-    expiry_s, _, mac = token.partition(".")
+        tok = f.read_text().strip()
+        if tok:
+            _secret_cache = tok
+            return tok
+    except OSError:
+        pass
+    data_dir().mkdir(parents=True, exist_ok=True)
+    tok = secrets.token_urlsafe(32)
+    f.write_text(tok)
     try:
-        expiry = int(expiry_s)
-    except ValueError:
+        os.chmod(f, 0o600)
+    except OSError:
+        pass
+    _secret_cache = tok
+    return tok
+
+
+def _sign(msg: str) -> str:
+    return hmac.new(get_secret().encode(), msg.encode(), hashlib.sha256).hexdigest()
+
+
+def make_session() -> str:
+    exp = str(int(time.time()) + SESSION_TTL)
+    return f"{exp}.{_sign('session|' + exp)}"
+
+
+def verify_session(value: str | None) -> bool:
+    if not value or "." not in value:
         return False
-    if expiry < time.time():
+    exp, sig = value.split(".", 1)
+    if not exp.isdigit() or int(exp) < time.time():
         return False
-    expected = hmac.new(_secret(), expiry_s.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(mac, expected)
+    return hmac.compare_digest(sig, _sign("session|" + exp))
 
 
-def _valid_bearer(request: Request) -> bool:
-    header = request.headers.get("authorization", "")
-    scheme, _, value = header.partition(" ")
-    return scheme.lower() == "bearer" and hmac.compare_digest(value, PASSWORD)
+def check_token(token: str | None) -> bool:
+    if not token:
+        return False
+    return hmac.compare_digest(str(token), get_secret())
 
 
-def _is_navigation(request: Request) -> bool:
-    """Browser address-bar / link navigation, as opposed to fetch/XHR/SW.
-
-    Redirecting only navigations to /login keeps the service worker from ever
-    caching the login page under "/", and gives API callers a clean 401.
-    """
-    mode = request.headers.get("sec-fetch-mode")
-    if mode is not None:
-        return mode == "navigate"
-    return "text/html" in request.headers.get("accept", "")
+def is_public(path: str) -> bool:
+    return path in _PUBLIC_EXACT or any(path.startswith(p) for p in _PUBLIC_PREFIX)
 
 
-async def middleware(request: Request, call_next):
-    if not PASSWORD:
-        return await call_next(request)
-    path = request.url.path
-    if path in _OPEN_PATHS or path.startswith(_OPEN_PREFIXES):
-        return await call_next(request)
-    if _valid_session(request.cookies.get(COOKIE)) or _valid_bearer(request):
-        return await call_next(request)
-    if request.method == "GET" and _is_navigation(request):
-        return RedirectResponse("/login", status_code=302)
-    return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+def is_loopback(host: str | None) -> bool:
+    return host in ("127.0.0.1", "::1", "localhost")
 
 
-def _set_session_cookie(request: Request, response: Response) -> None:
-    expiry = int(time.time()) + SESSION_DAYS * 86400
-    secure = (
-        request.url.scheme == "https"
-        or request.headers.get("x-forwarded-proto", "").startswith("https")
-    )
-    response.set_cookie(
-        COOKIE,
-        _sign(expiry),
-        max_age=SESSION_DAYS * 86400,
-        httponly=True,
-        samesite="lax",
-        secure=secure,
-    )
+def request_allowed(*, path: str, client_host: str | None, cookies, headers) -> bool:
+    """Central allow decision used by the HTTP middleware."""
+    mode = auth_mode()
+    if mode == "off":
+        return True
+    if is_public(path):
+        return True
+    if mode != "always" and is_loopback(client_host):
+        return True
+    if verify_session(cookies.get(SESSION_COOKIE)):
+        return True
+    authz = headers.get("authorization", "")
+    if authz.lower().startswith("bearer ") and check_token(authz[7:].strip()):
+        return True
+    if check_token(headers.get("x-devlog-token")):
+        return True
+    return False
 
 
-router = APIRouter()
-
-
-@router.post("/auth/login")
-async def login(request: Request) -> Response:
-    body = await request.json()
-    supplied = str(body.get("password", ""))
-    if not PASSWORD or not hmac.compare_digest(supplied, PASSWORD):
-        time.sleep(0.5)  # slow down brute force
-        return JSONResponse({"detail": "Wrong password"}, status_code=401)
-    response = Response(status_code=204)
-    _set_session_cookie(request, response)
-    return response
-
-
-@router.post("/auth/logout")
-def logout() -> Response:
-    response = Response(status_code=204)
-    response.delete_cookie(COOKIE)
-    return response
-
-
-@router.get("/auth/status")
-def status(request: Request) -> dict:
-    return {
-        "auth_enabled": bool(PASSWORD),
-        "authenticated": not PASSWORD or _valid_session(request.cookies.get(COOKIE)),
-    }
-
-
-_LOGIN_PAGE = """<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>Devlog — sign in</title>
-<link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
-<style>
-  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-         background: #f8fafc; color: #0f172a;
-         font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
-  form { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 2rem;
-         width: min(20rem, calc(100vw - 3rem)); box-shadow: 0 10px 25px rgb(0 0 0 / 0.06);
-         display: flex; flex-direction: column; gap: 0.75rem; }
-  img  { width: 48px; height: 48px; border-radius: 10px; margin: 0 auto 0.25rem; }
-  h1   { font-size: 1.05rem; font-weight: 600; text-align: center; margin: 0 0 0.5rem; }
-  input { font-size: 16px; padding: 0.6rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 8px; }
-  input:focus { outline: 2px solid #bfdbfe; border-color: #93c5fd; }
-  button { font-size: 0.95rem; font-weight: 500; padding: 0.6rem; border: 0; border-radius: 8px;
-           background: #0f172a; color: #fff; cursor: pointer; }
-  button:hover { background: #1e293b; }
-  #err { color: #b91c1c; font-size: 0.85rem; min-height: 1.1em; text-align: center; margin: 0; }
-</style>
-</head>
-<body>
-<form id="f">
-  <img src="/static/icon.svg" alt="" />
-  <h1>Sign in to devlog</h1>
-  <input id="pw" type="password" placeholder="Password" autofocus autocomplete="current-password" />
-  <button type="submit">Sign in</button>
-  <p id="err"></p>
-</form>
-<script>
-document.getElementById("f").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const err = document.getElementById("err");
-  err.textContent = "";
-  const r = await fetch("/auth/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ password: document.getElementById("pw").value }),
-  });
-  if (r.ok) location.href = "/";
-  else err.textContent = r.status === 401 ? "Wrong password." : "Login failed (" + r.status + ").";
-});
-</script>
-</body>
-</html>
-"""
-
-
-@router.get("/login", include_in_schema=False)
-def login_page() -> Response:
-    if not PASSWORD:
-        return RedirectResponse("/")  # auth disabled — nothing to sign in to
-    return HTMLResponse(_LOGIN_PAGE)
+def auth_required_for(client_host: str | None) -> bool:
+    """Whether a non-public request from this client would need the secret."""
+    mode = auth_mode()
+    if mode == "off":
+        return False
+    if mode != "always" and is_loopback(client_host):
+        return False
+    return True
