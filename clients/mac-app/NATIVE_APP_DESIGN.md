@@ -1,6 +1,10 @@
 # Devlog native macOS app — design doc
 
-Status: proposal · Target: extend `clients/mac-tray` into a full desktop app
+Status: implemented (superseded) · `clients/mac-app` is now the native window
+app described here. Note: this doc proposed keeping the menu-bar tray; the tray
+was **removed** afterwards, so the app is window-only (no `MenuBarExtra`,
+no `LSUIElement`). Sections below that discuss keeping the menu bar are
+historical.
 
 ## Goal
 
@@ -51,8 +55,8 @@ Landed (backend-only; independent of the Mac app, useful today):
     (rsvg-convert + iconutil), bundled by `build.sh` and referenced from
     Info.plist. `make-dmg.sh` builds a drag-to-Applications DMG; `install.sh`
     installs `Devlog.app` into `/Applications` (admin-writable, no sudo on stock
-    macOS) and re-registers with Launch Services. Makefile: `tray-icon`,
-    `tray-dmg`, `tray-install`. Still **ad-hoc signed** (not notarized) — a
+    macOS) and re-registers with Launch Services. Makefile: `mac-icon`,
+    `mac-dmg`, `mac-install`. Still **ad-hoc signed** (not notarized) — a
     Gatekeeper caveat for distribution, tracked below.
 
 Not yet built: `merge` mode, `/import/pull`, **bundling the backend sidecar into
@@ -61,7 +65,7 @@ polish, and code-signing/notarization for distribution — see rollout below.
 
 ## What exists today (baseline)
 
-- `clients/mac-tray` — SwiftUI `MenuBarExtra` app (`LSUIElement`, menu-bar only).
+- `clients/mac-app` — SwiftUI `MenuBarExtra` app (`LSUIElement`, menu-bar only).
   - `App.swift` — menu; "Open Web UI" opens the browser; "Capture…" / "New project…" windows.
   - `AppState.swift` — polls the backend every 5s; `connected` flips to false when it's down (shows "Backend offline").
   - `APIClient.swift` — **already takes `baseURL` as an init parameter**, hard-defaulted to `http://127.0.0.1:8765`.
@@ -75,7 +79,7 @@ The gap is small and precise: **(1) supervise a bundled backend, (2) show it in 
 
 ```
 Devlog.app
-├─ Contents/MacOS/DevlogTray        Swift app (menu bar + window + supervisor)
+├─ Contents/MacOS/Devlog        Swift app (window + supervisor)
 ├─ Contents/Resources/
 │  └─ backend/                      bundled Python sidecar (see "Packaging")
 │     ├─ python (standalone CPython)
@@ -126,7 +130,7 @@ from `AppState` instead of the hard-coded constant.
 - Only load `127.0.0.1:<port>`; deny navigation elsewhere via
   `decidePolicyFor navigationAction` (open external links in the system browser
   with `NSWorkspace`). Keeps the webview a trusted local surface.
-- Menu bar stays for quick Capture + Start/Pause/Done + Bookmarks (its real value).
+- ~~Menu bar stays for quick Capture + Start/Pause/Done + Bookmarks.~~ (Historical: the menu-bar tray was later removed; the app is window-only.)
 - "Open Web UI" can stay (browser) and/or gain "Open Window".
 
 ## Packaging the sidecar
@@ -264,10 +268,10 @@ Backend (Python):
 - `src/devlog/config.py` — default data dir stays overridable; native app passes `DEVLOG_DATA_DIR=~/Library/Application Support/Devlog`.
 
 Native (Swift) — new:
-- `Sources/DevlogTray/BackendSupervisor.swift` — process lifecycle, port pick, health wait, restart, teardown.
-- `Sources/DevlogTray/MainWindow.swift` — `WKWebView` window + navigation policy.
-- `Sources/DevlogTray/SettingsWindow.swift` — mode toggle (Managed/Connect), URL/port, data dir.
-- `Sources/DevlogTray/Settings.swift` — `UserDefaults`-backed config (mode, connectURL, port pref, dataDir).
+- `Sources/Devlog/BackendSupervisor.swift` — process lifecycle, port pick, health wait, restart, teardown.
+- `Sources/Devlog/MainWindow.swift` — `WKWebView` window + navigation policy.
+- `Sources/Devlog/SettingsWindow.swift` — mode toggle (Managed/Connect), URL/port, data dir.
+- `Sources/Devlog/Settings.swift` — `UserDefaults`-backed config (mode, connectURL, port pref, dataDir).
 
 Changed:
 - `App.swift` — add `MainWindow` scene + Settings; drop `LSUIElement` (or make it a preference); wire "Open Window".
@@ -275,7 +279,7 @@ Changed:
 - `APIClient.swift` — take the base URL from `AppState`/`Settings` rather than the hard-coded default.
 - `build.sh` — build + bundle the sidecar into `Resources/backend`; sign inner binaries; verify a moved `.app` still launches.
 - `Info.plist` — reconsider `LSUIElement`; bump version; add any needed entitlements when signing is tackled.
-- `Makefile` — `tray` target already builds+opens; ensure it triggers the sidecar bundling step.
+- `Makefile` — `mac` target already builds+opens; ensure it triggers the sidecar bundling step.
 
 ## Rollout (incremental, each step runnable)
 

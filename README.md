@@ -1,6 +1,6 @@
 # devlog
 
-Local-first developer task / note / link tracker. Single SQLite file, FastAPI backend, vanilla-JS web UI, a SwiftUI macOS menu-bar tray, and an MCP server so an LLM can drive everything.
+Local-first developer task / note / link tracker. Single SQLite file, FastAPI backend, vanilla-JS web UI, a native SwiftUI macOS app, and an MCP server so an LLM can drive everything.
 
 - **Tasks · notes · links** scoped to projects, with cross-refs (`#42`, `[[Title]]`), tags, full-text search, and a rich markdown editor.
 - **Time tracking** with single-doing invariant, editable sessions, end-of-workday auto-pause.
@@ -94,11 +94,11 @@ bash $(uv tool dir)/devlog/scripts/install-drawio.sh   # if you want drawings
 
 ```bash
 # From a repo checkout
-make install-linux      # backend service + tray, all-in-one
+make install-linux      # backend service + desktop app, all-in-one
 
 # Or piecewise
 bash clients/linux-server/install.sh   # backend via pipx/uv + systemd --user
-bash clients/linux-tray/install.sh     # tray indicator + autostart
+bash clients/linux-app/install.sh      # GTK desktop app + autostart
 
 # Or from anywhere, no checkout
 curl -sLf https://raw.githubusercontent.com/morapet/devlog/main/clients/linux-server/install.sh \
@@ -156,27 +156,27 @@ Devlog ships built-in auth for remote access: your own machine (loopback) is tru
 
 > Never expose port 8765 directly with `DEVLOG_AUTH=off` — an open devlog is writable by anyone. Keep the shared secret (required for remote access by default) and TLS in front (the cookie and token travel in requests).
 
-## Menu-bar tray (optional)
+## Desktop app (optional)
 
 ### macOS — native SwiftUI
 
 ```bash
-make tray
+make mac
 # or:
-cd clients/mac-tray && ./build.sh && open .build/Devlog.app
+cd clients/mac-app && ./build.sh && open .build/Devlog.app
 ```
 
-Requires Swift / CommandLineTools. The menu-bar icon shows the currently-doing task or today's count; the menu has the doing task at top, then bookmarks grouped per project, then today's tasks grouped per project.
+Requires Swift / CommandLineTools. A native window hosts the full web UI in a WKWebView (with native save/open panels and Cmd+F find), and can manage its own backend. `make mac-dmg` builds a drag-to-Applications installer; `make mac-install` copies it into `/Applications`.
 
-### Linux — GNOME / Ubuntu (PyGObject + libayatana-appindicator)
+### Linux — GNOME / Ubuntu (GTK3 + WebKit2GTK)
 
 ```bash
-make tray-linux
+make app-linux
 # or:
-bash clients/linux-tray/install.sh
+bash clients/linux-app/install.sh
 ```
 
-Tested on Ubuntu 22.04 + GNOME 42 (X11). The installer apt-installs `python3-gi`, `gir1.2-ayatanaappindicator3-0.1` and friends, drops a launcher at `~/.local/bin/devlog-tray`, and enables autostart. Same menu layout as the macOS tray. See [clients/linux-tray/README.md](clients/linux-tray/README.md).
+A GTK desktop window wrapping the same web UI. The installer apt-installs the PyGObject / WebKit2GTK dependencies, drops a launcher, and enables autostart. See [clients/linux-app/README.md](clients/linux-app/README.md).
 
 ## MCP server
 
@@ -204,7 +204,7 @@ make help               # list every target
 make install            # install python deps via uv
 make drawio             # download drawio webapp
 make dev                # run the backend
-make tray               # build and launch the Mac tray
+make mac                # build and launch the macOS app
 make mcp                # run devlog-mcp (stdio)
 make docker-build       # docker compose build
 make docker-up          # docker compose up -d
@@ -235,7 +235,7 @@ make clean              # remove build artifacts (keeps data + db)
 │   ├── autostop.py       # background loop pausing 'doing' tasks at end of workday
 │   ├── stats.py          # raw per-day session time math
 │   └── mcp_server.py     # FastMCP wrapper exposing 18 tools
-├── clients/mac-tray/     # SwiftUI menu-bar app (Swift Package Manager)
+├── clients/mac-app/      # SwiftUI native app (Swift Package Manager)
 ├── scripts/              # helpers (install-drawio.sh)
 ├── Dockerfile            # python:3.13-slim base, uv, optional drawio install
 ├── docker-compose.yml    # `make docker-up`
@@ -247,7 +247,7 @@ make clean              # remove build artifacts (keeps data + db)
 
 - **Backend**: FastAPI · SQLite (WAL + FTS5) · httpx · selectolax
 - **Web UI**: vanilla JS · Tailwind via CDN · markdown-it + custom plugins · highlight.js · Mermaid · drawio (vendored)
-- **macOS tray**: SwiftUI MenuBarExtra · NSStatusItem · async/await URLSession client
+- **macOS app**: SwiftUI · WKWebView · async/await URLSession client
 - **MCP**: `mcp` Python SDK (FastMCP, stdio transport)
 
 ## Documentation

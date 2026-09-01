@@ -324,7 +324,7 @@ After creating attachment N, embed it in the note's body so the preview renders 
 
 ![[drawing:42]]
 
-Components: web UI, mac tray, MCP server …
+Components: web UI, macOS app, MCP server …
 ```
 
 Multiple drawings per note are fine — each `![[drawing:N]]` is replaced independently.

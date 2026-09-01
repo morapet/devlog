@@ -44,7 +44,7 @@ jobs:
         run: swift --version
 
       - name: Build ad-hoc-signed DMG
-        working-directory: clients/mac-tray
+        working-directory: clients/mac-app
         run: |
           # Keep the committed AppIcon.icns; touching it ensures build.sh treats
           # it as up to date and skips make-icon.sh, which needs rsvg-convert
@@ -57,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Devlog-${{ steps.ver.outputs.next }}-dmg
-          path: clients/mac-tray/.build/Devlog-${{ steps.ver.outputs.next }}.dmg
+          path: clients/mac-app/.build/Devlog-${{ steps.ver.outputs.next }}.dmg
           if-no-files-found: error
 
       - name: Tag and publish Release
@@ -77,7 +77,7 @@ jobs:
           git push origin "$tag"
 
           gh release create "$tag" \
-            "clients/mac-tray/.build/Devlog-${tag}.dmg" \
+            "clients/mac-app/.build/Devlog-${tag}.dmg" \
             --title "Devlog $tag" \
             --notes "Automated macOS build for \`$tag\` (main @ ${GITHUB_SHA:0:7}).
 

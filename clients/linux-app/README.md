@@ -4,7 +4,6 @@ The Linux counterpart of the macOS app: a real window embedding the devlog web
 UI in a WebKit2 web view, with the same two backend modes.
 
 This is distinct from the other Linux clients:
-- **`linux-tray`** — a menu-bar indicator (AppIndicator), no window.
 - **`linux-server`** — runs the backend as a systemd `--user` service.
 - **`linux-app`** (this) — the windowed WebKit app you look at and work in.
 
@@ -45,6 +44,10 @@ Environment (highest priority) or `~/.config/devlog/app.json`:
 
 ## Notes
 
+- **Exports / backups** save through a native GTK file dialog: the web UI hands
+  the bytes to a `devlogSave` script-message handler (WebKit2GTK ignores
+  `<a download>`), matching the macOS app. **Ctrl+F** opens the in-note find bar;
+  **Ctrl+R** reloads.
 - Managed mode uses the backend's single-writer data-dir lock, so it will refuse
   to start a second backend on `~/.local/share/devlog` if the systemd service is
   already running — switch to connect mode in that case.

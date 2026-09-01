@@ -139,5 +139,5 @@ echo " Stop:        systemctl --user stop devlog"
 echo " Disable:     systemctl --user disable --now devlog"
 echo " Upgrade:     bash $0   (re-run this script)"
 echo
-echo " Tray (optional):  bash clients/linux-tray/install.sh"
+echo " Desktop app (optional):  bash clients/linux-app/install.sh"
 echo "──────────────────────────────────────────────────"

@@ -49,15 +49,15 @@ jobs:
         if: always()
         run: cat server.log || true
 
-  mac-tray:
-    name: macOS tray build
+  mac-app:
+    name: macOS app build
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: swift --version
         run: swift --version
-      - name: Build tray app
-        working-directory: clients/mac-tray
+      - name: Build macOS app
+        working-directory: clients/mac-app
         run: ./build.sh
 
   docker-build:
