@@ -5,7 +5,7 @@ cd "$(dirname "$0")"
 
 CONFIG=${CONFIG:-release}
 APP_NAME=Devlog
-BIN_NAME=DevlogTray
+BIN_NAME=Devlog
 BUILD_DIR=.build
 APP_DIR="$BUILD_DIR/$APP_NAME.app"
 

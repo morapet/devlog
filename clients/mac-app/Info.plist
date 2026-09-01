@@ -7,13 +7,13 @@
     <key>CFBundleDisplayName</key>
     <string>Devlog</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.devlog.tray</string>
+    <string>dev.devlog</string>
     <key>CFBundleVersion</key>
     <string>0.1.0</string>
     <key>CFBundleShortVersionString</key>
     <string>0.1.0</string>
     <key>CFBundleExecutable</key>
-    <string>DevlogTray</string>
+    <string>Devlog</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleIconName</key>

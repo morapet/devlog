@@ -12,11 +12,11 @@ The system has these surfaces:
 
 1. **HTTP API** — the source of truth, REST + JSON, served on `127.0.0.1:8765`.
 2. **Web UI** — vanilla JS SPA served by the same process at `/`.
-3. **macOS menu-bar tray** — native SwiftUI client.
-4. **Linux tray** — Python/GTK client (libayatana-appindicator).
+3. **macOS app** — native SwiftUI client hosting the web UI in a WKWebView.
+4. **Linux app** — PyGObject + WebKit2GTK client hosting the web UI in a window.
 5. **MCP server** — stdio JSON-RPC, exposes the API as ~18 tools.
 
-The web UI is browse-and-edit. The trays are read-and-quick-act (start/done/pause + open bookmarks). The MCP server is for headless creation of projects/tasks/notes/links/sessions and search.
+The web UI is browse-and-edit; the native apps embed it in a desktop window. The MCP server is for headless creation of projects/tasks/notes/links/sessions and search.
 
 ---
 
@@ -433,79 +433,54 @@ Opens from sidebar `+` or any project row's `⋮`. Fields: Slug (disabled when e
 
 ---
 
-## 7. macOS tray
+## 7. macOS app
 
-Native SwiftUI menu-bar-only app (`LSUIElement = true`). SF Symbol `checklist` icon + a short status string (currently `doing` task title, or `N today`, or `—` when disconnected).
+Native SwiftUI app that hosts the full web UI in a `WKWebView`, alongside a few native windows. Shows a normal Dock icon and main window (no menu-bar-only mode).
 
 ### 7.1 Build
 
 Swift Package Manager, no Xcode required. `build.sh`:
 1. `swift build -c release`
-2. Assemble `Devlog.app/Contents/{MacOS, Resources}` with a hand-rolled `Info.plist` (`LSUIElement = true`, bundle id, etc.)
+2. Assemble `Devlog.app/Contents/{MacOS, Resources}` with a hand-rolled `Info.plist` (bundle id `dev.devlog`, etc.)
 3. Copy the binary, ad-hoc codesign.
 
-### 7.2 Menu structure
+`make-dmg.sh` wraps the bundle in a drag-to-Applications DMG; `install.sh` copies it into `/Applications`. CI (`.github/workflows/release-macos.yml`) builds and releases the DMG on each push to `main`.
 
-```
-▶ <doing task>                ▸  ⏸ Pause (move to Today)
-                                 ✓ Mark done
-─────────
-Bookmarks
-  <project> (current) · N    ▸  <bookmark>     ← opens URL in default browser
-  <project> · N              ▸  …
-─────────
-Today (N)
-  <project> · M              ▸  <task>         ▸ ▶ Start (mark doing)
-                                                 ✓ Mark done
-─────────
-Capture…                     ⌘N   ← opens a SwiftUI Capture window with Task / Note / Link tabs
-New project…                       ← opens a SwiftUI New-project window (slug auto-derived from name)
-Open Web UI
-─────────
-Refresh                      ⌘R
-Quit Devlog                  ⌘Q
-```
+### 7.2 Windows
 
-The Doing item sits **at the top with no section header** (it's the most prominent slot). Bookmarks and Today are both grouped per project; the current project sorts first then alphabetical.
+- **Main** (`WindowGroup`) — the devlog web UI in a `WKWebView` (`MainWindow`), so the app has full feature parity without reimplementing the frontend.
+- **Settings** — backend mode (managed vs. connect) and connection target.
+- **Capture** (`Cmd+N`) — segmented Task / Note / Link tabs (`Cmd+1/2/3`), project picker (defaults to current/scope/last), `Esc` cancels, `Cmd+Enter` saves and opens in the web UI, plain `Enter` saves and closes.
+- **New project** — slug auto-derived from name.
 
-### 7.3 Backend client
+### 7.3 Web-view bridges
 
-`URLSession` with 10 s timeout. Polls every 5 s on `MenuBarExtra`'s label `.task` (so polling starts as soon as the icon renders, not only when the menu opens). `URLSession` calls run off the main actor; UI updates marshal back via `@MainActor`.
+- Same-origin (and `about:`) navigation stays in the web view; external links open in the default browser.
+- Exports (`<a download>`, which WKWebView ignores) post `{name, text}` to a `devlogSave` script handler → native `NSSavePanel`; file inputs → `NSOpenPanel`.
+- JS `alert` / `confirm` / `prompt` render as native `NSAlert`s.
+- `Cmd+F` invokes the web UI's in-note find bar via `performKeyEquivalent`.
 
-### 7.4 Edit menu hack
+### 7.4 Backend supervision
 
-To make `Cmd+C / V / X / Z / Shift+Z / A` work in the Capture and New-project windows, an `NSApplicationDelegateAdaptor` installs a programmatic `NSMenu` with the standard Edit items at `applicationDidFinishLaunching`. The menu is never shown (LSUIElement is true) but Cocoa's responder chain still dispatches the shortcuts through it.
+The app either starts and supervises its own backend (`BackendSupervisor`) or connects to a running one (`AppSettings.mode`). `URLSession` calls run off the main actor; UI updates marshal back via `@MainActor`. It refreshes the project list every 5 s for the native pickers.
 
-### 7.5 Capture window
+### 7.5 Edit menu
 
-SwiftUI window with segmented Task / Note / Link tabs (`Cmd+1/2/3` switches), project picker (defaults to current/scope/last), fields per kind, `Esc` cancels, `Cmd+Enter` saves and opens in the web UI, plain `Enter` saves and closes.
+To make `Cmd+C / V / X / Z / Shift+Z / A` work in the native windows, an `NSApplicationDelegateAdaptor` installs a programmatic `NSMenu` with the standard Edit items at `applicationDidFinishLaunching`, so Cocoa's responder chain dispatches the shortcuts through the web view.
 
 ---
 
-## 8. Linux tray
+## 8. Linux app
 
-Single-file Python script using PyGObject + libayatana-appindicator (with fallback to AppIndicator3). Tested on Ubuntu 22.04 + GNOME 42 X11.
+`clients/linux-app` — a PyGObject + WebKit2GTK window wrapping the same web UI, the Linux counterpart of §7. Tested on Ubuntu + GNOME.
 
-### 8.1 Menu
+### 8.1 Installer
 
-Same structure as the macOS tray (Doing top-level, Bookmarks per project, Today per project, Capture/New project/Open Web UI as web-UI links — no native dialogs).
-
-### 8.2 Activation gotchas (mandatory)
-
-- Build menus with `Gtk.MenuItem.new_with_label(...)` (the kwarg form `Gtk.MenuItem(label=…)` is unreliable through dbusmenu on GNOME).
-- Hold a strong reference to the current `Gtk.Menu` on the instance (`self._menu = menu`). Without it, Python GCs the menu's handler closures shortly after `set_menu()` — the menu structure stays alive on D-Bus but clicks become no-ops.
-
-### 8.3 Icon
-
-Symbolic SVG installed to `~/.local/share/icons/hicolor/symbolic/apps/devlog-tray-symbolic.svg`, referenced by **name** so GNOME re-colors it per panel theme. Plain `#bebebe` fill (the GTK-symbolic placeholder color). Loading by file path skips the recolor pipeline and the icon ends up black on dark panels.
-
-### 8.4 Installer
-
-`install.sh`:
-1. `apt-get install python3-gi python3-gi-cairo gir1.2-gtk-3.0 gir1.2-ayatanaappindicator3-0.1 xdg-utils`
-2. Drop `~/.local/bin/devlog-tray` launcher
-3. Install the `.desktop` file under `~/.local/share/applications/` and `~/.config/autostart/`
-4. Copy the symbolic SVG into the user-local icon theme + refresh the icon cache
+`install.sh` (per-user install into `~/.local`, only the apt step needs root):
+1. `apt-get install python3-gi python3-gi-cairo gir1.2-gtk-3.0` and `gir1.2-webkit2-4.1` (fallback `4.0`).
+2. Drop a `~/.local/bin/devlog-app` launcher.
+3. Install the `.desktop` file under `~/.local/share/applications/` and `~/.config/autostart/`.
+4. Copy the app icon into the user-local icon theme.
 
 ---
 
@@ -535,10 +510,9 @@ The `project` argument on each tool accepts either an int id or a slug; the serv
 | `DEVLOG_HOST` | `127.0.0.1` | bind address (use `0.0.0.0` in Docker) |
 | `DEVLOG_PORT` | `8765` | bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | SQLite + backups dir |
-| `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | used by `devlog-mcp` and the Linux tray |
+| `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | used by `devlog-mcp` and the Linux app |
 | `DEVLOG_AUTH` | `auto` | `auto` trusts loopback + requires the token remotely; `always` everywhere; `off` disables (§4.11) |
 | `DEVLOG_AUTH_TOKEN` | *(auto-generated to `auth.token`)* | shared secret for remote access (§4.11); `devlog-mcp` reads it too |
-| `DEVLOG_TRAY_ICON` | `devlog-tray-symbolic` | XDG icon name for the Linux tray |
 | `DRAWIO_VERSION` | `v30.0.2` | tag used by `scripts/install-drawio.sh` |
 
 ---
@@ -565,8 +539,10 @@ src/devlog/
     vendor/drawio/        # ~120 MB, .gitignore'd, fetched on demand
   mcp_server.py           # FastMCP wrapper
 clients/
-  mac-tray/               # SwiftUI + SPM
-  linux-tray/             # Python + PyGObject + libayatana-appindicator
+  mac-app/                # SwiftUI + WKWebView (Swift Package Manager)
+  linux-app/              # PyGObject + WebKit2GTK window
+  linux-server/           # systemd --user service installer
+  ios/                    # run-on-phone (iSH) walkthrough
 scripts/
   install-drawio.sh       # fetch + prune drawio webapp
   backup-db.sh            # online SQLite .backup with --keep N rotation
@@ -585,7 +561,6 @@ Dockerfile  docker-compose.yml  Makefile  pyproject.toml
 - **SQLite ≥ 3.35** for FTS5 and partial indexes. WAL mode enabled. **Thread-local connections required** — `sqlite3.Connection` is not safe to share across FastAPI's threadpool workers; doing so causes intermittent cursor-interleaving (rows with NULL primary keys, "by_project None" in stats). Use `threading.local()` to give each worker its own connection.
 - **markdown-it plugin globals.** When loading plugins via UMD scripts in the browser, the globals differ in case: `markdownit`, `markdownitFootnote`, `markdownitTaskLists`, `markdownItAnchor` (this one uses camel "It"). Admonitions: we implement our own block rule rather than depend on a brittle CDN package.
 - **drawio SVG quirks.** drawio's `xmlsvg` export uses `<foreignObject>` for text labels and includes `color-scheme: light dark` on the root. Render inside a Shadow DOM and strip the color-scheme declaration before injection, otherwise text disappears and colors flip with the OS theme.
-- **AppIndicator + dbusmenu.** Menu items must be `Gtk.MenuItem.new_with_label`; the `Gtk.Menu` instance must be kept alive on `self`; the icon must be referenced by name in the hicolor symbolic theme to get auto-recoloring.
 
 ---
 
@@ -597,7 +572,7 @@ Three first-class paths:
 2. **Local uv** — `make install && make drawio && make dev`.
 3. **As a tool** — `uv tool install git+https://github.com/morapet/devlog.git && devlog`.
 
-CI builds run on every push: ruff lint, Python smoke (boots the server with `DEVLOG_DATA_DIR=$RUNNER_TEMP/...`, runs `scripts/smoke_test.py`), macOS Swift build of the tray, Docker build sanity. Releases push a multi-arch image to `ghcr.io/morapet/devlog`.
+CI builds run on every push: ruff lint, Python smoke (boots the server with `DEVLOG_DATA_DIR=$RUNNER_TEMP/...`, runs `scripts/smoke_test.py`), macOS Swift build of the app, Docker build sanity. Releases push a multi-arch image to `ghcr.io/morapet/devlog`, and each push to `main` builds + releases the macOS DMG.
 
 ---
 
@@ -605,7 +580,7 @@ CI builds run on every push: ruff lint, Python smoke (boots the server with `DEV
 
 - Multi-user / TLS / cloud sync. The design assumes a single user; optional single-user password auth exists (§4.11) for hosted setups, but TLS is always delegated to a reverse proxy or tunnel (see `deploy/`), and there are no accounts, roles, or sharing.
 - Mobile apps.
-- Real-time push to clients. All clients poll (Mac tray every 5 s, web Home every 15 s, Linux tray every 5 s).
+- Real-time push to clients. All clients poll (native apps every 5 s, web Home every 15 s).
 - Calendar / due-date notifications.
 - Importers / exporters beyond plain SQLite (a `.backup` is the supported way to migrate).
 - Per-item permissions or sharing.
@@ -628,8 +603,8 @@ To bring up a clean reimplementation:
 - [ ] Web UI screens (§6) — at minimum: Home + project list/detail + capture modal
 - [ ] Markdown pipeline (§6.5) with admonitions + cross-refs + drawings
 - [ ] drawio embed in the same modal pattern (§6.4)
-- [ ] Mac tray (§7) with single-doing-aware menu
-- [ ] Linux tray (§8) — pay attention to the AppIndicator + dbusmenu gotchas
+- [ ] macOS app (§7) — WKWebView window + native Capture/Settings
+- [ ] Linux app (§8) — PyGObject + WebKit2GTK window
 - [ ] MCP server (§9) exposing the listed tools
 - [ ] Backup script + online SQLite `.backup` (§13)
 

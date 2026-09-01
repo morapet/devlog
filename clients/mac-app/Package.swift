@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "DevlogTray",
+    name: "Devlog",
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(
-            name: "DevlogTray",
-            path: "Sources/DevlogTray"
+            name: "Devlog",
+            path: "Sources/Devlog"
         )
     ]
 )

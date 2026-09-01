@@ -76,10 +76,10 @@ DEVLOG_DATA_DIR=/home/me/projects/devlog-data
 
 After editing: `systemctl --user restart devlog`.
 
-## Pair with the tray
+## Pair with the desktop app
 
 ```bash
-bash clients/linux-tray/install.sh
+bash clients/linux-app/install.sh
 ```
 
-Tray + backend then start together on every login.
+The GTK desktop app + backend then start together on every login.

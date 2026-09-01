@@ -15,14 +15,14 @@ Snapshot of how devlog is wired today. Complements [SPECIFICATION.md](SPECIFICAT
                                                │ HTTP / JSON
                                                │
   ┌──────────────────────┐                     │
-  │   macOS menu bar     │                     │       ┌────────────────────────────┐
-  │   SwiftUI / SPM      │ ─────────────HTTP ──┼──────►│                            │
+  │   macOS app          │                     │       ┌────────────────────────────┐
+  │   SwiftUI + WebKit    │ ────────────HTTP ──┼──────►│                            │
   └──────────────────────┘                     │       │       devlog backend       │
                                                │       │   FastAPI (Python ≥ 3.12)  │
   ┌──────────────────────┐                     │       │                            │
-  │   Linux tray         │ ─────────────HTTP ──┤       │  • items / projects /      │
+  │   Linux app          │ ─────────────HTTP ──┤       │  • items / projects /      │
   │   PyGObject + GTK    │                     │       │    sessions / attachments  │
-  │   AppIndicator       │                     │       │    / search / stats        │
+  │   WebKit2GTK         │                     │       │    / search / stats        │
   └──────────────────────┘                     │       │  • autopause loop (60 s)   │
                                                │       │  • link metadata fetcher   │
   ┌──────────────────────┐                     │       │  • refs auto-rebuild       │
@@ -51,8 +51,8 @@ There is exactly one process to run: the FastAPI server. Everything else either 
 |---|---|---|
 | Backend HTTP API | `uv run devlog` (or `~/.local/bin/devlog`) | One long-lived process. Bind 127.0.0.1:8765. |
 | Web UI | None — served as static files | Loaded into a browser tab on demand. |
-| macOS tray | `Devlog.app` (SwiftUI) | One per session. Polls backend every 5 s. |
-| Linux tray | `~/.local/bin/devlog-tray` (Python script via `xdg-autostart`) | One per session. Polls every 5 s. |
+| macOS app | `Devlog.app` (SwiftUI + WKWebView) | One per session. Native window; can manage its own backend. |
+| Linux app | `devlog-app` (PyGObject + WebKit2GTK, via `xdg-autostart`) | One per session. Native window. |
 | MCP server | `devlog-mcp` spawned by the MCP client (stdio) | Per-client subprocess. Translates tool calls to HTTP. |
 | Autopause | Asyncio task inside the backend | Fires once at startup, then every 60 s. |
 | Backup | `scripts/backup-db.sh` (cron / launchd / one-off) | On demand. Uses SQLite online `.backup`. |
@@ -102,21 +102,21 @@ Schema details: see [SPECIFICATION.md §3](SPECIFICATION.md#3-domain-model).
 | **FTS sync.** `items_fts` updated by AFTER INSERT/UPDATE/DELETE triggers in the schema. | `db.py::SCHEMA` |
 | **Cascade.** Deleting a project cascades items (and via FK their sessions / versions / attachments / refs); children projects are promoted to roots. | `api/projects.py::delete_project` |
 
-Clients (web, trays, MCP) **never** simulate any of these. They make the call and trust the result.
+Clients (web, native apps, MCP) **never** simulate any of these. They make the call and trust the result.
 
 ---
 
 ## 5. Request flow (typical task lifecycle)
 
-1. User clicks `▶ Start` in the tray on task #42.
-2. Mac/Linux tray hits `POST /tasks/42/doing`.
+1. User clicks `▶ Start` on task #42 (web UI or a native app).
+2. The client hits `POST /tasks/42/doing`.
 3. Backend, in one transaction:
    - `UPDATE items SET status = 'today', doing_started_at = NULL WHERE status = 'doing'` (any prior doing)
    - `UPDATE work_sessions SET ended_at = now WHERE ended_at IS NULL` (close prior session)
    - `UPDATE items SET status = 'doing', doing_started_at = now WHERE id = 42`
    - `INSERT INTO work_sessions(item_id, started_at) VALUES (42, now)`
    - returns the updated item
-4. Tray polls 5 s later: `GET /items?kind=task&status=doing&limit=1` returns #42. Menu label updates.
+4. The web UI reflects the change immediately; other clients see it on their next `GET /items?kind=task&status=doing&limit=1`.
 5. User does work. Some hours later, end-of-workday fires (18:00 local on a workday):
    - Autopause loop closes the open session at exactly 18:00:00 (not at the tick time).
    - Sets the task back to `today`.
@@ -178,22 +178,17 @@ Project args accept either a slug or a numeric id; the tool resolves slugs inter
 
 ## 8. Clients
 
-### 8.1 macOS tray
+### 8.1 macOS app
 
-SwiftUI MenuBarExtra, built via Swift Package Manager (no Xcode). `build.sh` produces `Devlog.app/Contents/{MacOS, Resources}` with a hand-rolled Info.plist (`LSUIElement = true`). Polls every 5 s on the indicator label's `.task` modifier (so polling starts the moment the icon renders).
+Native SwiftUI app, built via Swift Package Manager (no Xcode). `build.sh` produces `Devlog.app/Contents/{MacOS, Resources}` with a hand-rolled Info.plist. The main `WindowGroup` hosts the full web UI in a `WKWebView` (`MainWindow`), so the app has feature parity without reimplementing the frontend; native Settings / Capture / New-project windows sit alongside it. It can either start and supervise its own backend or connect to a running one (`BackendSupervisor`, `AppSettings.mode`).
 
-Menu layout: Doing task at the very top (top-level item, no section header), then Bookmarks grouped per project, then Today grouped per project, then Capture / New project / Web UI / Refresh / Quit. Current project is sorted first in groups and tagged `(current)`.
+WKWebView bridges: `<a download>` / exports are caught and routed to an `NSSavePanel`; file inputs open an `NSOpenPanel`; JS dialogs get native `NSAlert`s; off-origin links open in the system browser; Cmd+F calls the web UI's find bar via `performKeyEquivalent`.
 
-Edit-menu hack: an `NSApplicationDelegateAdaptor` installs a programmatic `NSMenu` with the standard Edit items at launch. The menu is never shown but Cocoa needs it for Cmd+C/V/X/Z/Shift+Z/A to dispatch through the responder chain.
+Edit-menu hack: an `NSApplicationDelegateAdaptor` installs a programmatic `NSMenu` with the standard Edit items at launch, so Cmd+C/V/X/Z/Shift+Z/A dispatch through the responder chain in the web view.
 
-### 8.2 Linux tray
+### 8.2 Linux app
 
-Single-file Python script using PyGObject + `libayatana-appindicator` (fallback to `AppIndicator3`). Same menu structure as macOS. Two **mandatory** gotchas baked in:
-
-1. Build items with `Gtk.MenuItem.new_with_label(...)` (kwarg form is unreliable through dbusmenu on GNOME).
-2. Keep the active `Gtk.Menu` referenced from `self._menu`. Without it, Python GCs the menu's handler closures shortly after `set_menu()` — clicks become silent no-ops.
-
-Icon: symbolic SVG (`#bebebe` fill) installed to `~/.local/share/icons/hicolor/symbolic/apps/devlog-tray-symbolic.svg`, referenced **by name**. GNOME's panel then recolors it per theme.
+`clients/linux-app` — a PyGObject + WebKit2GTK window wrapping the same web UI, the Linux counterpart of the macOS app. Installed via `clients/linux-app/install.sh` (apt deps + launcher + `xdg-autostart`).
 
 ### 8.3 Linux server (systemd user service)
 
@@ -230,12 +225,11 @@ CI in `.github/workflows/`:
 For anyone catching up on changes after `SPECIFICATION.md` was first written:
 
 - **2-level project tree** (`parent_id`) — root → child, no grandchildren. Sidebar renders the tree with indentation; project modal has a Parent dropdown.
-- **Link display labels** (`display_label`) — overrides the fetched/manual title in tiles, list rows, tray menus, and detail header. Inputs in the link detail meta row and in the New-link tab.
+- **Link display labels** (`display_label`) — overrides the fetched/manual title in tiles, list rows, and detail header. Inputs in the link detail meta row and in the New-link tab.
 - **Focus mode** — read-only viewer toggle (👁/✏) per item. Hides editor + meta + tags + actions; shows centered max-w-3xl preview. Clicking a drawing in focus mode opens a lightbox (95vw × 95vh) instead of the editor. Persisted in `localStorage["focusMode"]`.
 - **Markdown toolbar** — Bold / Italic / Strike / Code / H1-3 / Bullets / Numbered / Task / Quote / Link / Code block / HR / Admonition / Insert drawing. Cmd/Ctrl+B/I/K shortcuts.
 - **MCP server enhancements** — added `list_attachments`, `get_attachment`, `create_attachment`, `update_attachment`, `delete_attachment` (drawings are now fully MCP-native); ships a 4.2 KB `instructions` field at `initialize` summarizing invariants + workflows + drawing recipe.
 - **Linux server systemd install** — `clients/linux-server/{install.sh, devlog.service}` plus `make server-linux` / `make install-linux`.
-- **Linux tray click fix** — keep the `Gtk.Menu` referenced from `self`; use `new_with_label`; ship a symbolic SVG so the icon recolors per theme.
 - **Web UI niceties** — Esc closes any modal; Tab/Shift+Tab cycles the New-item tabs when focus is on the strip (not in a form field); resizable sidebar/detail splitter with `localStorage` persistence; render-error fallback in the detail pane.
 - **AGENTS.md / SPECIFICATION.md / ARCHITECTURE.md** — three-layer documentation, scoped from how-to-use → what-it-is → big-picture.
 - **Phone-usable web UI** — at ≤640px the three desktop panes become a navigation stack: one full-screen pane at a time, driven by a bottom tab bar (Home · Projects · Search · New) with a back chevron in the header; PNG icons for iOS (`apple-touch-icon` ignores SVG); safe-area insets; 16px form fields to stop Safari's focus zoom.

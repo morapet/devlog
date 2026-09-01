@@ -4,7 +4,6 @@ The Linux counterpart of the macOS app: a real window embedding the devlog web
 UI in a WebKit2 web view, with the same two backend modes.
 
 This is distinct from the other Linux clients:
-- **`linux-tray`** — a menu-bar indicator (AppIndicator), no window.
 - **`linux-server`** — runs the backend as a systemd `--user` service.
 - **`linux-app`** (this) — the windowed WebKit app you look at and work in.
 
