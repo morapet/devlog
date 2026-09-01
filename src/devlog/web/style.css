@@ -70,44 +70,55 @@ body[data-focus="1"] #detail {
   width: 100%;
 }
 
-/* ---------- Mobile (phones, < 768px) ----------
-   The desktop 3-pane layout (sidebar | list | detail) becomes:
-   - sidebar: off-canvas drawer, toggled via the header hamburger
-     (body[data-sidebar-open="1"]) with a tap-to-close backdrop;
-   - list and detail: one pane at a time — the list fills the screen,
-     selecting an item slides the detail in (body[data-mobile-detail="1"]),
-     a back bar in the detail returns to the list. */
-#sidebar-backdrop { display: none; }
+/* ==========================================================================
+   Mobile (phone) layout — drill-down stack + bottom tab bar.
+   Desktop is untouched: everything below only applies at ≤640px, and is
+   gated on body[data-mobile="1"] (set by the JS matchMedia controller).
 
+   The desktop three-pane layout (sidebar | list | detail) becomes a
+   navigation stack where exactly ONE pane fills the screen at a time. Which
+   pane shows is driven by body[data-pane]; the JS keeps it in sync with the
+   nav state. A fixed bottom bar (Home · Projects · Search · New) gives
+   thumb-reachable navigation.
+   ========================================================================== */
+@media (max-width: 640px) {
+  body[data-mobile="1"] main { position: relative; }
+
+  /* All four panes overlap, each filling the area above the tab bar. */
+  body[data-mobile="1"] #sidebar,
+  body[data-mobile="1"] #home-view,
+  body[data-mobile="1"] #list-pane,
+  body[data-mobile="1"] #detail {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 3.5rem;
+    width: 100% !important;
+    max-width: 100%;
+    z-index: 1;
+    display: none !important;   /* hidden unless it's the active pane */
+  }
+  body[data-mobile="1"] #splitter { display: none !important; }
+
+  /* Reveal only the pane matching the current stack level. !important beats
+     the .hidden toggling that showHomeOnly() does for the desktop layout. */
+  body[data-mobile="1"][data-pane="projects"] #sidebar   { display: block !important; }
+  body[data-mobile="1"][data-pane="home"]     #home-view { display: block !important; }
+  body[data-mobile="1"][data-pane="list"]     #list-pane { display: flex  !important; }
+  body[data-mobile="1"][data-pane="detail"]   #detail    { display: block !important; }
+
+  /* Bottom tab bar. */
+  #mobile-tabbar { display: flex; }
+  #mobile-tabbar button.active { color: #0f172a; }
+
+  /* Back chevron in the header — only meaningful one level deep. */
+  body[data-mobile="1"][data-pane="list"]   #mobile-back,
+  body[data-mobile="1"][data-pane="detail"] #mobile-back { display: block; }
+
+  /* New-item modal: near-full-width sheet instead of a fixed 480px card. */
+  #modal { width: calc(100vw - 1.5rem) !important; max-width: 100%; }
+}
+
+/* iOS Safari zooms the page when a focused field's font-size is < 16px. */
 @media (max-width: 767px) {
-  #splitter { display: none !important; }
-  #list-pane { width: 100% !important; border-right: 0; }
-  #detail { display: none; }
-  body[data-mobile-detail="1"] #list-pane { display: none; }
-  body[data-mobile-detail="1"] #detail:not(.hidden) { display: block; }
-
-  #sidebar {
-    position: fixed;
-    top: calc(3rem + env(safe-area-inset-top, 0px));
-    bottom: 0;
-    left: 0;
-    z-index: 30;
-    width: 16rem;
-    transform: translateX(-100%);
-    transition: transform 0.15s ease-out;
-    box-shadow: 0 10px 25px rgb(0 0 0 / 0.15);
-  }
-  body[data-sidebar-open="1"] #sidebar { transform: translateX(0); }
-  body[data-sidebar-open="1"] #sidebar-backdrop {
-    display: block;
-    position: fixed;
-    top: calc(3rem + env(safe-area-inset-top, 0px));
-    right: 0; bottom: 0; left: 0;
-    z-index: 25;
-    background: rgb(0 0 0 / 0.3);
-  }
-
-  /* iOS Safari zooms the page when a focused field's font-size is < 16px. */
   input, select, textarea { font-size: 16px !important; }
 }
 
@@ -148,3 +159,34 @@ body {
 .chip.high      { background:#fee2e2; color:#b91c1c; }
 .chip.normal    { background:#f1f5f9; color:#475569; }
 .chip.low       { background:#f1f5f9; color:#94a3b8; }
+
+/* ---- find-in-note (Cmd/Ctrl+F) ---- */
+mark.find-hit {
+  background: #fde68a; color: inherit;
+  border-radius: 2px; padding: 0 1px;
+}
+mark.find-hit.active {
+  background: #fb923c; color: #1e293b;
+  box-shadow: 0 0 0 2px rgba(251, 146, 60, 0.4);
+}
+#find-bar {
+  position: fixed; top: 12px; right: 16px; z-index: 40;
+  display: flex; align-items: center; gap: 6px;
+  background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.15);
+  padding: 6px 8px;
+}
+#find-bar input {
+  border: none; outline: none; font-size: 0.85rem; width: 180px; color: #0f172a;
+}
+#find-bar .find-count {
+  font-size: 0.72rem; color: #64748b; min-width: 44px; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+#find-bar .find-count.none { color: #b91c1c; }
+#find-bar button {
+  border: none; background: transparent; color: #475569;
+  width: 24px; height: 24px; border-radius: 5px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+#find-bar button:hover { background: #f1f5f9; }

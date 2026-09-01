@@ -1,11 +1,14 @@
 # devlog behind Caddy on a VPS: automatic HTTPS (Let's Encrypt) + devlog's
-# built-in password auth. See README.md in this directory.
+# built-in shared-secret auth. See README.md in this directory.
 services:
   devlog:
     image: ghcr.io/morapet/devlog:latest
     restart: unless-stopped
     environment:
-      DEVLOG_PASSWORD: ${DEVLOG_PASSWORD:?set DEVLOG_PASSWORD in .env}
+      # Public server: require the shared secret on every request (not just
+      # remote ones) and pin it to a known value.
+      DEVLOG_AUTH: always
+      DEVLOG_AUTH_TOKEN: ${DEVLOG_AUTH_TOKEN:?set DEVLOG_AUTH_TOKEN in .env}
     volumes:
       - ./data:/data
     # No ports: — only Caddy talks to devlog, on the internal network.

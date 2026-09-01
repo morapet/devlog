@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+    <!-- Full-color square icon for the home screen / launcher. -->
+    <rect width="512" height="512" rx="96" fill="#0f172a"/>
+    <g fill="none" stroke="#f8fafc" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="96" y="96" width="320" height="320" rx="32"/>
+        <polyline points="140,196 174,230 234,170"/>
+        <polyline points="140,316 174,350 234,290"/>
+        <line x1="276" y1="196" x2="370" y2="196"/>
+        <line x1="276" y1="316" x2="370" y2="316"/>
+    </g>
+</svg>

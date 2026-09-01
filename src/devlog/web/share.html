@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Devlog — shared</title>
+<meta name="robots" content="noindex, nofollow" />
+<link rel="icon" type="image/svg+xml" href="/static/icon.svg" />
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<!-- Markdown: markdown-it + plugins (same as the app) -->
+<script src="https://cdn.jsdelivr.net/npm/markdown-it@14.1.0/dist/markdown-it.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-footnote@4.0.0/dist/markdown-it-footnote.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-task-lists@2.1.1/dist/markdown-it-task-lists.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/markdown-it-anchor@9.0.1/dist/markdownItAnchor.umd.js"></script>
+
+<!-- Syntax highlighting -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/github.min.css" />
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+
+<!-- Mermaid -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
+  <div class="max-w-[110ch] mx-auto px-6 py-8">
+    <div id="share-banner"
+         class="mb-4 text-xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-slate-200 pb-3">
+      <span class="font-semibold text-slate-700">devlog</span>
+      <span>· read-only shared view</span>
+      <span id="share-expiry" class="ml-auto"></span>
+    </div>
+    <div id="share-root">
+      <div class="text-slate-400 text-sm py-16 text-center">Loading…</div>
+    </div>
+    <div class="mt-10 pt-4 border-t border-slate-200 text-[11px] text-slate-400 text-center">
+      Shared from devlog · read-only
+    </div>
+  </div>
+  <script src="/static/share.js"></script>
+</body>
+</html>

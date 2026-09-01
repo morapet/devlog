@@ -1,0 +1,86 @@
+name: Release macOS app
+
+# Every push to main (i.e. each merge) gets auto-tagged with the next patch
+# version and released with a drag-to-Applications DMG installer. Manual runs
+# (workflow_dispatch) only build the DMG and upload it as a workflow artifact —
+# they do not tag or create a Release.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Required to push the version tag and create the GitHub Release.
+permissions:
+  contents: write
+
+# Serialize releases so two quick merges can't race on tag creation.
+concurrency:
+  group: release-macos
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build DMG installer
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history + tags, needed to compute the next version
+
+      - name: Compute next version
+        id: ver
+        run: |
+          latest=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n1)
+          if [ -z "$latest" ]; then
+            next="v0.1.0"
+          else
+            next="v$(echo "${latest#v}" | awk -F. '{printf "%d.%d.%d", $1, $2, $3 + 1}')"
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Next version: $next"
+
+      - name: swift --version
+        run: swift --version
+
+      - name: Build ad-hoc-signed DMG
+        working-directory: clients/mac-tray
+        run: |
+          # Keep the committed AppIcon.icns; touching it ensures build.sh treats
+          # it as up to date and skips make-icon.sh, which needs rsvg-convert
+          # (not installed on the runner).
+          touch AppIcon.icns
+          ./make-dmg.sh
+          mv .build/Devlog.dmg ".build/Devlog-${{ steps.ver.outputs.next }}.dmg"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Devlog-${{ steps.ver.outputs.next }}-dmg
+          path: clients/mac-tray/.build/Devlog-${{ steps.ver.outputs.next }}.dmg
+          if-no-files-found: error
+
+      - name: Tag and publish Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${{ steps.ver.outputs.next }}"
+
+          # Skip if this exact commit is already tagged (e.g. a re-run).
+          if git tag --points-at HEAD | grep -q '^v[0-9]'; then
+            echo "Commit already tagged; skipping release."
+            exit 0
+          fi
+
+          git tag "$tag"
+          git push origin "$tag"
+
+          gh release create "$tag" \
+            "clients/mac-tray/.build/Devlog-${tag}.dmg" \
+            --title "Devlog $tag" \
+            --notes "Automated macOS build for \`$tag\` (main @ ${GITHUB_SHA:0:7}).
+
+          **Install:** open the \`.dmg\` and drag **Devlog** into **Applications**.
+
+          The app is ad-hoc signed (not notarized), so on first launch macOS Gatekeeper will warn. Right-click **Devlog.app → Open**, then confirm once."

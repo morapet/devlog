@@ -52,11 +52,11 @@ def create_task(t: TaskCreate) -> Item:
             _clear_doing(c, now)
         cur = c.execute(
             """INSERT INTO items(kind, project_id, title, body, tags, created_at, updated_at,
-                                 status, due_at, priority, doing_started_at)
-               VALUES('task', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                                 status, due_at, priority, estimate_minutes, doing_started_at)
+               VALUES('task', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 t.project_id, t.title, t.body, json.dumps(t.tags), now, now,
-                t.status, t.due_at, t.priority,
+                t.status, t.due_at, t.priority, t.estimate_minutes,
                 now if t.status == "doing" else None,
             ),
         )
@@ -90,9 +90,9 @@ def create_note(n: NoteCreate) -> Item:
     with tx() as c:
         _assert_project(c, n.project_id)
         cur = c.execute(
-            """INSERT INTO items(kind, project_id, title, body, tags, created_at, updated_at)
-               VALUES('note', ?, ?, ?, ?, ?, ?)""",
-            (n.project_id, n.title, n.body, json.dumps(n.tags), now, now),
+            """INSERT INTO items(kind, project_id, title, body, tags, created_at, updated_at, due_at)
+               VALUES('note', ?, ?, ?, ?, ?, ?, ?)""",
+            (n.project_id, n.title, n.body, json.dumps(n.tags), now, now, n.due_at),
         )
         item_id = cur.lastrowid
         rebuild_refs(c, item_id, n.project_id, n.title, n.body)

@@ -43,6 +43,7 @@ class TaskCreate(BaseModel):
     status: TaskStatus = "todo"
     due_at: Optional[str] = None
     priority: Optional[Priority] = None
+    estimate_minutes: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -53,6 +54,7 @@ class TaskUpdate(BaseModel):
     due_at: Optional[str] = None
     priority: Optional[Priority] = None
     blocked_reason: Optional[str] = None
+    estimate_minutes: Optional[int] = None
 
 
 class NoteCreate(BaseModel):
@@ -60,12 +62,14 @@ class NoteCreate(BaseModel):
     title: Optional[str] = None
     body: str = Field(min_length=1)
     tags: list[str] = []
+    due_at: Optional[str] = None
 
 
 class NoteUpdate(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     tags: Optional[list[str]] = None
+    due_at: Optional[str] = None
 
 
 class LinkCreate(BaseModel):
@@ -104,6 +108,7 @@ class Item(BaseModel):
     blocked_reason: Optional[str] = None
     done_at: Optional[str] = None
     doing_started_at: Optional[str] = None
+    estimate_minutes: Optional[int] = None
     # link
     url: Optional[str] = None
     link_description: Optional[str] = None

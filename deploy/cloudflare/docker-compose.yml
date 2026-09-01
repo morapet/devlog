@@ -5,9 +5,11 @@ services:
     image: ghcr.io/morapet/devlog:latest
     restart: unless-stopped
     environment:
-      # Optional but recommended even behind Cloudflare Access:
-      # defense in depth costs one password prompt every 90 days.
-      DEVLOG_PASSWORD: ${DEVLOG_PASSWORD:-}
+      # The tunnel reaches devlog as a non-loopback client, so devlog already
+      # requires its shared secret here. Pin it to a known value; otherwise
+      # it's auto-generated (read it with `devlog --print-token`). Leave unset
+      # to auto-generate, or if you rely solely on Cloudflare Access.
+      DEVLOG_AUTH_TOKEN: ${DEVLOG_AUTH_TOKEN:-}
     volumes:
       - ./data:/data
 

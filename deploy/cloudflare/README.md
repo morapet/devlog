@@ -18,7 +18,7 @@ curl -sLO https://raw.githubusercontent.com/morapet/devlog/main/deploy/cloudflar
 
 cat > .env <<EOF
 TUNNEL_TOKEN=<token from step 1>
-DEVLOG_PASSWORD=$(openssl rand -base64 24)
+DEVLOG_AUTH_TOKEN=$(openssl rand -base64 24)
 EOF
 
 docker compose up -d
@@ -35,5 +35,5 @@ PIN) or your Google account. Set the session duration to something long
 (e.g. 1 month) so the home-screen app doesn't re-prompt often.
 
 With Access in place the login happens at Cloudflare's edge before traffic
-reaches your machine; `DEVLOG_PASSWORD` remains as a second layer (or can be
+reaches your machine; `DEVLOG_AUTH_TOKEN` remains as a second layer (or can be
 left unset if you trust Access alone).

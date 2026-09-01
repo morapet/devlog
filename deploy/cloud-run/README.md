@@ -7,7 +7,7 @@ everything in one SQLite file. This recipe solves that the canonical way —
 [Litestream](https://litestream.io) streams every write to a Cloud Storage
 bucket and restores the DB when a fresh instance boots.
 
-Set `DEVLOG_PASSWORD` — the URL is public.
+Set `DEVLOG_AUTH_TOKEN` — the URL is public.
 
 ## Prerequisites
 
@@ -44,10 +44,10 @@ gcloud run deploy devlog \
     --allow-unauthenticated \
     --max-instances 1 \
     --memory 512Mi \
-    --set-env-vars "LITESTREAM_REPLICA_URL=gcs://$BUCKET/devlog,DEVLOG_PASSWORD=$(openssl rand -base64 24)"
+    --set-env-vars "LITESTREAM_REPLICA_URL=gcs://$BUCKET/devlog,DEVLOG_AUTH=always,DEVLOG_AUTH_TOKEN=$(openssl rand -base64 24)"
 ```
 
-The deploy prints the service URL. Open it, sign in (the password is in
+The deploy prints the service URL. Open it, enter the token (it's in
 the service's env vars: Cloud Run console → devlog → Revisions →
 Variables), and on the iPhone: Share → **Add to Home Screen**.
 

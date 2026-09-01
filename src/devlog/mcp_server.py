@@ -112,12 +112,13 @@ in the devlog repo.
 mcp = FastMCP("devlog", instructions=INSTRUCTIONS)
 
 # A single shared client. httpx.Client is thread-safe for use across requests.
-# If the backend is password-protected (DEVLOG_PASSWORD on the server), set
-# the same value here so the MCP server can authenticate.
+# On loopback the backend trusts us without a secret (DEVLOG_AUTH=auto). For
+# remote backends, or DEVLOG_AUTH=always, set DEVLOG_AUTH_TOKEN to the shared
+# secret (see `devlog token`) so the MCP server can authenticate.
 _headers = {}
-_password = os.environ.get("DEVLOG_PASSWORD", "")
-if _password:
-    _headers["Authorization"] = f"Bearer {_password}"
+_token = os.environ.get("DEVLOG_AUTH_TOKEN", "")
+if _token:
+    _headers["Authorization"] = f"Bearer {_token}"
 _client = httpx.Client(base_url=BASE_URL, timeout=20.0, headers=_headers)
 
 

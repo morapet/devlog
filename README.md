@@ -147,14 +147,14 @@ The backend is small enough to run on the phone itself inside [iSH](https://ish.
 
 ## Hosting it on the internet (HTTPS + login)
 
-Devlog ships optional single-user auth: set **`DEVLOG_PASSWORD`** and every request needs a login (90-day session cookie; API clients send `Authorization: Bearer <password>`). Unset, devlog behaves as before — no login, for localhost/LAN use. With a password set and HTTPS in front, hosting publicly is reasonable. Two ready-made setups, both serving the PWA from anywhere with full offline-shell support:
+Devlog ships built-in auth for remote access: your own machine (loopback) is trusted, but requests from other devices need a shared secret. The secret comes from **`DEVLOG_AUTH_TOKEN`**, or is auto-generated into `<data_dir>/auth.token` — print it with `devlog --print-token`. Set **`DEVLOG_AUTH=always`** to require the secret even on loopback, or **`DEVLOG_AUTH=off`** to disable auth entirely. The web UI prompts for the token on first remote access and keeps a 30-day session cookie; API clients send `Authorization: Bearer <token>`. With HTTPS in front, hosting publicly is reasonable. Two ready-made setups, both serving the PWA from anywhere with full offline-shell support:
 
-- [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports: runs on any always-on machine at home; optional Cloudflare Access (Google login / email PIN) at the edge on top of the built-in password.
-- [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**: ~€4/mo box, automatic Let's Encrypt certificates, built-in password for auth.
+- [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports: runs on any always-on machine at home; optional Cloudflare Access (Google login / email PIN) at the edge on top of the built-in shared secret.
+- [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**: ~€4/mo box, automatic Let's Encrypt certificates, built-in shared secret for auth.
 - [deploy/pythonanywhere/](deploy/pythonanywhere/README.md) — **PythonAnywhere**: free tier works (HTTPS at `you.pythonanywhere.com`), no server admin at all; deploys via a small WSGI bridge.
 - [deploy/cloud-run/](deploy/cloud-run/README.md) — **Google Cloud Run**: free `*.run.app` HTTPS URL, scale-to-zero; SQLite persists via Litestream streaming to a GCS bucket (single instance only).
 
-> Never expose port 8765 directly without `DEVLOG_PASSWORD` — an open devlog is writable by anyone. And even with the password, keep TLS in front (the cookie and password travel in requests).
+> Never expose port 8765 directly with `DEVLOG_AUTH=off` — an open devlog is writable by anyone. Keep the shared secret (required for remote access by default) and TLS in front (the cookie and token travel in requests).
 
 ## Menu-bar tray (optional)
 
@@ -221,7 +221,8 @@ make clean              # remove build artifacts (keeps data + db)
 | `DEVLOG_PORT` | `8765` | Bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | Where the SQLite file lives |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | Used by `devlog-mcp` to reach the backend |
-| `DEVLOG_PASSWORD` | *(unset — auth disabled)* | Enables login (web) / Bearer auth (API, `devlog-mcp`) |
+| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback and requires the token remotely; `always` requires it everywhere; `off` disables auth |
+| `DEVLOG_AUTH_TOKEN` | *(auto-generated to `auth.token`)* | Shared secret for remote access; print it with `devlog --print-token`. Read by `devlog-mcp` too |
 
 ## Project layout
 

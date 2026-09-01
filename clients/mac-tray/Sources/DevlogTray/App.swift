@@ -7,6 +7,14 @@ struct DevlogTrayApp: App {
     @StateObject private var state = AppState()
 
     var body: some Scene {
+        // Main window: the full web UI in a WKWebView.
+        WindowGroup("Devlog", id: "main") {
+            MainWindow()
+                .environmentObject(state)
+                .task { await state.bootBackend() }
+        }
+        .defaultSize(width: 1100, height: 720)
+
         MenuBarExtra {
             MenuContent()
                 .environmentObject(state)
@@ -17,12 +25,22 @@ struct DevlogTrayApp: App {
                     Text(state.menuBarTitle).font(.system(size: 12))
                 }
             }
-            .task { state.startPolling() }
+            .task { await state.bootBackend() }
         }
         .menuBarExtraStyle(.menu)
 
+        Settings {
+            SettingsWindow().environmentObject(state)
+        }
+
         Window("Capture", id: "capture") {
             CaptureWindow().environmentObject(state)
+        }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
+
+        Window("New project", id: "new-project") {
+            NewProjectWindow().environmentObject(state)
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
@@ -35,6 +53,11 @@ struct DevlogTrayApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installEditMenu()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Tear down a managed backend so no orphan process survives the app.
+        AppState.shared?.supervisor.stop()
     }
 
     private func installEditMenu() {
@@ -156,6 +179,11 @@ struct MenuContent: View {
 
         Divider()
 
+        Button("Open Devlog Window") {
+            openWindow(id: "main")
+            NSApp.activate(ignoringOtherApps: true)
+        }
+
         Button("Capture…") {
             openWindow(id: "capture")
             NSApp.activate(ignoringOtherApps: true)
@@ -167,10 +195,14 @@ struct MenuContent: View {
             NSApp.activate(ignoringOtherApps: true)
         }
         Button("Open Web UI") {
-            if let url = URL(string: "http://127.0.0.1:8765/") {
-                NSWorkspace.shared.open(url)
-            }
+            let url = app.baseURL ?? URL(string: "http://127.0.0.1:8765/")!
+            NSWorkspace.shared.open(url)
         }
+        Button("Settings…") {
+            app.openSettings()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        .keyboardShortcut(",")
 
         Divider()
         Button("Refresh") { Task { await app.refresh() } }

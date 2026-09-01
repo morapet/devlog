@@ -35,45 +35,6 @@ window.addEventListener("appinstalled", () => {
   if (btn) btn.hidden = true;
 });
 
-// Show "Sign out" only when the server has password auth enabled.
-fetch("/auth/status").then((r) => r.ok ? r.json() : null).then((s) => {
-  if (!s || !s.auth_enabled) return;
-  const btn = document.getElementById("sign-out");
-  if (!btn) return;
-  btn.hidden = false;
-  btn.onclick = async () => {
-    await fetch("/auth/logout", { method: "POST" });
-    location.href = "/login";
-  };
-}).catch(() => {});
-
-// ---------- mobile navigation (phones, < 768px) ----------
-// The header hamburger toggles the sidebar drawer; style.css positions it
-// off-canvas via body[data-sidebar-open="1"]. Any tap inside the sidebar
-// (project row, Home, + New) closes the drawer — the listener sits on the
-// #sidebar element itself, so it survives renderSidebar()'s replaceChildren.
-function closeSidebarDrawer() { document.body.removeAttribute("data-sidebar-open"); }
-(function setupMobileNav() {
-  const toggle = document.getElementById("nav-toggle");
-  if (toggle) toggle.addEventListener("click", () => {
-    if (document.body.hasAttribute("data-sidebar-open")) closeSidebarDrawer();
-    else document.body.setAttribute("data-sidebar-open", "1");
-  });
-  const backdrop = document.getElementById("sidebar-backdrop");
-  if (backdrop) backdrop.addEventListener("click", closeSidebarDrawer);
-  const sidebar = document.getElementById("sidebar");
-  if (sidebar) sidebar.addEventListener("click", (e) => {
-    if (e.target.closest("button")) closeSidebarDrawer();
-  });
-})();
-
-// Mirror "an item is selected" onto <body> so style.css can swap the list
-// pane for the detail pane on phones (body[data-mobile-detail="1"]).
-function _applyMobileDetailAttr() {
-  if (state.selected) document.body.setAttribute("data-mobile-detail", "1");
-  else document.body.removeAttribute("data-mobile-detail");
-}
-
 // ---------- tiny utils ----------
 const $ = (s) => document.querySelector(s);
 const el = (tag, attrs = {}, ...kids) => {
@@ -92,11 +53,54 @@ const el = (tag, attrs = {}, ...kids) => {
 };
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "content-type": "application/json" }, ...opts });
-  if (r.status === 401) { location.href = "/login"; throw new Error("401 not authenticated"); }
+  if (r.status === 401) { showLoginOverlay(); throw new Error("401 authentication required"); }
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   if (r.status === 204) return null;
   return r.json();
 };
+
+// Shown when the backend requires auth (remote access). Localhost is trusted,
+// so this never appears on this machine.
+let _loginShown = false;
+function showLoginOverlay() {
+  if (_loginShown) return;
+  _loginShown = true;
+  const err = el("div", { class: "hidden text-sm text-red-600 mt-2" });
+  const input = el("input", {
+    type: "password", placeholder: "Access token",
+    class: "w-full border border-slate-300 rounded px-2 py-1.5 text-sm",
+  });
+  const submit = async () => {
+    err.classList.add("hidden");
+    try {
+      const r = await fetch("/auth/login", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token: input.value }),
+      });
+      if (!r.ok) { err.textContent = "Incorrect token."; err.classList.remove("hidden"); return; }
+      location.reload();
+    } catch { err.textContent = "Login failed."; err.classList.remove("hidden"); }
+  };
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
+  const overlay = el("div", {
+    class: "fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4",
+  },
+    el("div", { class: "bg-white rounded-lg shadow-xl w-[360px] p-5" },
+      el("div", { class: "font-semibold text-slate-900" }, "🔒 Devlog is locked"),
+      el("div", { class: "text-sm text-slate-600 mt-1 mb-3" },
+        "Enter the access token to continue. Get it on the server with ",
+        el("span", { class: "font-mono text-slate-800" }, "devlog token"), "."),
+      input,
+      el("button", {
+        class: "mt-3 w-full px-3 py-1.5 text-sm rounded bg-slate-900 text-white hover:bg-slate-800",
+        onclick: submit,
+      }, "Unlock"),
+      err,
+    ),
+  );
+  document.body.append(overlay);
+  setTimeout(() => input.focus(), 50);
+}
 const toast = (msg, ms = 1800) => {
   const t = $("#toast");
   t.textContent = msg;
@@ -129,6 +133,8 @@ const state = {
   selectedId: null,
   selected: null,
   drafts: {},             // id -> dirty edits
+  mobilePane: null,       // phone drill-down: 'projects' forces the project
+                          // list; null = derive pane from view state.
 };
 
 const STATUS_ORDER = ["doing", "today", "todo", "blocked", "someday", "done", "cancelled"];
@@ -194,6 +200,9 @@ function showHomeOnly(show) {
 })();
 
 async function dispatchView() {
+  // Any dispatchView means we've navigated into Home/list content, leaving the
+  // phone project-browser behind — let the pane derive from view state again.
+  state.mobilePane = null;
   if (state.pseudo === "home" && !state.search.trim()) {
     showHomeOnly(true);
     await renderHome();
@@ -203,6 +212,7 @@ async function dispatchView() {
     renderFilters();
     await reloadList();
   }
+  syncMobile();
 }
 
 function renderHeader() {
@@ -550,12 +560,13 @@ async function selectItem(id) {
   }
   // Now that an item is selected, apply focus body attr (if focusMode is on).
   _applyFocusBodyAttr();
-  _applyMobileDetailAttr();
   // mark selected
   for (const row of document.querySelectorAll(".list-row")) {
     if (row.textContent.includes("#" + id)) row.classList.add("selected");
   }
   renderDetail();
+  state.mobilePane = null;
+  syncMobile(); // drill into the detail pane on phones
 }
 
 function renderDetail() {
@@ -594,6 +605,11 @@ function renderDetail() {
         title: state.focusMode ? "Exit focus mode" : "Focus mode — read-only, hides editor",
         onclick: toggleFocusMode,
       }, state.focusMode ? "✏ Edit" : "👁 Focus"),
+      el("button", {
+        class: "ml-2 px-2 py-0.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-100",
+        title: "Create a read-only share link (focus view) others on your network can open",
+        onclick: () => openShareModal(it),
+      }, "🔗 Share"),
     ),
     it.kind !== "link"
       ? (state.focusMode
@@ -646,6 +662,80 @@ function _applyFocusBodyAttr() {
 // Apply once on script load so a reload that restores focusMode = true from
 // localStorage gives full width immediately.
 _applyFocusBodyAttr();
+
+// ---------- phone layout: drill-down stack + bottom tab bar ----------
+// The desktop three-pane layout is collapsed into a one-pane-at-a-time stack
+// on narrow screens. All the show/hide is done in CSS via body[data-mobile]
+// and body[data-pane]; this controller just keeps those attributes in sync
+// with the existing nav state (state.pseudo / .scopeProjectId / .selected).
+const MOBILE_MQ = window.matchMedia("(max-width: 640px)");
+const isMobile = () => MOBILE_MQ.matches;
+
+// Which stack level should be visible, derived from view state (or forced to
+// the project browser when the Projects tab was tapped).
+function currentMobilePane() {
+  if (state.mobilePane === "projects") return "projects";
+  if (state.selected) return "detail";
+  if (state.pseudo === "home" && !state.search.trim()) return "home";
+  return "list";
+}
+
+function syncMobile() {
+  const body = document.body;
+  if (!isMobile()) {
+    body.removeAttribute("data-mobile");
+    body.removeAttribute("data-pane");
+    return;
+  }
+  const pane = currentMobilePane();
+  body.setAttribute("data-mobile", "1");
+  body.setAttribute("data-pane", pane);
+  // Bottom-bar highlight: list/detail live "under" Projects.
+  const activeTab = pane === "home" ? "home" : "projects";
+  for (const b of document.querySelectorAll("#mobile-tabbar button")) {
+    b.classList.toggle("active", b.dataset.tab === activeTab);
+  }
+}
+
+// One level up in the stack: detail → list → projects.
+function mobileBack() {
+  const pane = document.body.getAttribute("data-pane");
+  if (pane === "detail") { clearSel(); syncMobile(); }
+  else if (pane === "list") { state.mobilePane = "projects"; syncMobile(); }
+}
+
+(function setupMobileNav() {
+  const back = document.getElementById("mobile-back");
+  if (back) back.addEventListener("click", mobileBack);
+
+  const bar = document.getElementById("mobile-tabbar");
+  if (bar) {
+    bar.addEventListener("click", async (e) => {
+      const btn = e.target.closest("button[data-tab]");
+      if (!btn) return;
+      switch (btn.dataset.tab) {
+        case "home":
+          state.pseudo = "home"; state.scopeProjectId = null; state.search = "";
+          clearSel(); state.mobilePane = null; renderSidebar(); await dispatchView();
+          break;
+        case "projects":
+          state.mobilePane = "projects"; syncMobile();
+          break;
+        case "search":
+          state.pseudo = "home"; state.search = "";
+          clearSel(); state.mobilePane = null; renderSidebar(); await dispatchView();
+          document.getElementById("home-search")?.focus();
+          break;
+        case "new":
+          openNewItemModal();
+          break;
+      }
+    });
+  }
+
+  // Re-sync when crossing the breakpoint (rotation, resize, desktop⇄mobile).
+  MOBILE_MQ.addEventListener("change", syncMobile);
+})();
 
 function renderTagsEditor(it) {
   const wrap = el("div", { class: "px-6 py-2 border-b border-slate-200 bg-white" });
@@ -891,6 +981,24 @@ function renderMeta(it, draft) {
         onchange: (e) => setDraftLoud(it.id, "priority", e.target.value),
       }, ...["low", "normal", "high"].map((p) => el("option", { value: p, selected: p === priority }, p)))
     ));
+    const dueVal = draft.due_at !== undefined ? draft.due_at : it.due_at;
+    row.append(label("Due",
+      el("input", {
+        type: "date", value: isoToDateInput(dueVal),
+        class: "border border-slate-300 rounded px-2 py-1 text-sm",
+        onchange: (e) => setDraftLoud(it.id, "due_at", dateInputToIso(e.target.value)),
+      })
+    ));
+    const estMin = draft.estimate_minutes !== undefined ? draft.estimate_minutes : it.estimate_minutes;
+    row.append(label("Estimate (h)",
+      el("input", {
+        type: "number", min: "0", step: "0.25",
+        value: estMin != null ? (estMin / 60) : "",
+        placeholder: "—", title: "Estimated hours",
+        class: "border border-slate-300 rounded px-2 py-1 text-sm w-20",
+        onchange: (e) => setDraftLoud(it.id, "estimate_minutes", estimateInputToMinutes(e.target.value)),
+      })
+    ));
     if ((draft.status ?? it.status) === "blocked") {
       row.append(label("Reason",
         el("input", {
@@ -927,6 +1035,16 @@ function renderMeta(it, draft) {
       title: is_pinned ? "Remove bookmark" : "Add bookmark",
       onclick: () => togglePin(it),
     }, is_pinned ? "★ Bookmarked" : "☆ Bookmark"));
+  } else if (it.kind === "note") {
+    const dueVal = draft.due_at !== undefined ? draft.due_at : it.due_at;
+    row.append(label("Date",
+      el("input", {
+        type: "date", value: isoToDateInput(dueVal),
+        title: "Show this note on the calendar for a given day",
+        class: "border border-slate-300 rounded px-2 py-1 text-sm",
+        onchange: (e) => setDraftLoud(it.id, "due_at", dateInputToIso(e.target.value)),
+      })
+    ));
   }
   return row;
 }
@@ -1693,18 +1811,28 @@ function clearSel() {
   // Focus mode is only "on" while an item is being viewed; clear the body
   // attribute so the sidebar reappears as soon as the user navigates away.
   if (typeof _applyFocusBodyAttr === "function") _applyFocusBodyAttr();
-  if (typeof _applyMobileDetailAttr === "function") _applyMobileDetailAttr();
 }
 
 // (Header search and global "+ New" buttons removed — search lives inside Home, "+ New" lives in the sidebar.)
 
-function openNewItemModal() {
+function openNewItemModal(opts = {}) {
   const TABS = ["task", "note", "link"];
-  let tab = "task";
+  let tab = TABS.includes(opts.tab) ? opts.tab : "task";
+  // Optional YYYY-MM-DD to pre-fill the date/due field (e.g. from the calendar).
+  const presetDate = opts.dueDate || "";
   let projectId = state.scopeProjectId ?? state.currentProjectId ?? state.projects[0]?.id ?? null;
 
   const overlay = $("#modal-overlay");
   const m = $("#modal");
+
+  // Shared post-create step: close, refresh the list, run any caller hook
+  // (the calendar uses it to re-render the month), and toast.
+  const afterCreate = () => {
+    overlay.classList.add("hidden");
+    reloadList();
+    if (typeof opts.onCreated === "function") opts.onCreated();
+    toast("Created");
+  };
 
   // Tab / Shift+Tab cycles Task → Note → Link, but only when focus is NOT
   // inside an input/textarea/select (so form-field Tab navigation still works).
@@ -1761,20 +1889,23 @@ function openNewItemModal() {
       ...TASK_STATUSES.slice(0, 5).map((s) => el("option", { value: s, selected: s === "todo" }, s)));
     const priority = el("select", { class: "border border-slate-300 rounded px-2 py-1 text-sm" },
       ...["low", "normal", "high"].map((p) => el("option", { value: p, selected: p === "normal" }, p)));
+    const due = el("input", { type: "date", value: presetDate, class: "border border-slate-300 rounded px-2 py-1 text-sm" });
+    const estimate = el("input", { type: "number", min: "0", step: "0.25", placeholder: "—", title: "Estimated hours", class: "border border-slate-300 rounded px-2 py-1 text-sm w-20" });
     const body = el("textarea", { class: "mt-2 w-full font-mono text-sm border border-slate-300 rounded p-2 min-h-[100px]", placeholder: "Body…" });
     m.append(
       title,
-      el("div", { class: "mt-2 flex gap-3" }, label("Status", status), label("Priority", priority)),
+      el("div", { class: "mt-2 flex flex-wrap gap-3" }, label("Status", status), label("Priority", priority), label("Due", due), label("Estimate (h)", estimate)),
       body,
       el("div", { class: "mt-3 flex justify-end gap-2" },
         el("button", { class: "px-3 py-1.5 text-sm text-slate-600 hover:underline", onclick: () => overlay.classList.add("hidden") }, "Cancel"),
         el("button", { class: "px-3 py-1.5 text-sm bg-slate-900 text-white rounded hover:bg-slate-700", onclick: async () => {
           try {
-            const payload = { project_id: projectId, title: title.value, status: status.value, priority: priority.value, body: body.value || null };
+            const payload = {
+              project_id: projectId, title: title.value, status: status.value, priority: priority.value,
+              body: body.value || null, due_at: dateInputToIso(due.value), estimate_minutes: estimateInputToMinutes(estimate.value),
+            };
             await api("/tasks", { method: "POST", body: JSON.stringify(payload) });
-            overlay.classList.add("hidden");
-            reloadList();
-            toast("Created");
+            afterCreate();
           } catch (e) { toast(e.message); }
         } }, "Create"))
     );
@@ -1783,14 +1914,17 @@ function openNewItemModal() {
 
   const renderNoteForm = () => {
     const t = el("input", { type: "text", class: "mt-2 w-full border border-slate-300 rounded px-2 py-1.5 text-sm", placeholder: "Title (optional)" });
+    const date = el("input", { type: "date", value: presetDate, class: "border border-slate-300 rounded px-2 py-1 text-sm" });
     const body = el("textarea", { class: "mt-2 w-full font-mono text-sm border border-slate-300 rounded p-2 min-h-[200px]", placeholder: "Body (markdown)…" });
-    m.append(t, body,
+    m.append(t,
+      el("div", { class: "mt-2" }, label("Date", date)),
+      body,
       el("div", { class: "mt-3 flex justify-end gap-2" },
         el("button", { class: "px-3 py-1.5 text-sm text-slate-600 hover:underline", onclick: () => overlay.classList.add("hidden") }, "Cancel"),
         el("button", { class: "px-3 py-1.5 text-sm bg-slate-900 text-white rounded hover:bg-slate-700", onclick: async () => {
           try {
-            await api("/notes", { method: "POST", body: JSON.stringify({ project_id: projectId, title: t.value || null, body: body.value }) });
-            overlay.classList.add("hidden"); reloadList(); toast("Created");
+            await api("/notes", { method: "POST", body: JSON.stringify({ project_id: projectId, title: t.value || null, body: body.value, due_at: dateInputToIso(date.value) }) });
+            afterCreate();
           } catch (e) { toast(e.message); }
         } }, "Create"))
     );
@@ -1812,7 +1946,7 @@ function openNewItemModal() {
               display_label: lbl.value.trim() || null,
               annotation: ann.value || null,
             }) });
-            overlay.classList.add("hidden"); reloadList(); toast("Created");
+            afterCreate();
           } catch (e) { toast(e.message); }
         } }, "Create"))
     );
@@ -1996,13 +2130,500 @@ function openProjectModal(project) {
 }
 
 // Close modal on overlay click
+// ---------- data: backup, export & import ----------
+const SECTION_LABEL = "text-xs uppercase tracking-wider text-slate-500 mb-1";
+const BTN_PLAIN = "px-3 py-1.5 text-sm border border-slate-300 rounded hover:bg-slate-100";
+
+// Save text to a file. In a browser this is a blob download; inside the native
+// (WKWebView) app, WKWebView ignores <a download>, so we hand the bytes to the
+// native save-panel bridge instead.
+function saveFile(name, text) {
+  const bridge = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.devlogSave;
+  if (bridge) { bridge.postMessage({ name, text }); return; }
+  const blob = new Blob([text], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = el("a", { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function fmtBytes(n) {
+  if (n == null) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fmtWhen(iso) {
+  if (!iso) return "unknown time";
+  const d = new Date(iso);
+  return isNaN(d) ? iso : d.toLocaleString();
+}
+
+function openDataModal() {
+  const overlay = $("#modal-overlay");
+  const m = $("#modal");
+  m.replaceChildren();
+  const close = () => overlay.classList.add("hidden");
+  const errBox = el("div", { class: "hidden text-sm text-red-600 mt-2" });
+  const showErr = (msg) => { errBox.textContent = msg; errBox.classList.remove("hidden"); };
+  const clearErr = () => errBox.classList.add("hidden");
+
+  // ---- Export ----
+  const projectBoxes = [];
+  const projList = el("div", { class: "max-h-40 overflow-auto border border-slate-200 rounded p-2 space-y-1" });
+  for (const p of state.projects) {
+    const cb = el("input", { type: "checkbox", checked: true, class: "accent-slate-700" });
+    cb.dataset.slug = p.slug;
+    projectBoxes.push(cb);
+    projList.append(el("label", { class: "flex items-center gap-2 text-sm text-slate-700" },
+      cb, el("span", {}, p.name), el("span", { class: "text-slate-400" }, `(${p.slug})`)));
+  }
+  if (!state.projects.length) projList.append(el("div", { class: "text-sm text-slate-400" }, "No projects yet."));
+
+  const allCb = el("input", { type: "checkbox", checked: true, class: "accent-slate-700" });
+  allCb.addEventListener("change", () => projectBoxes.forEach((b) => { b.checked = allCb.checked; }));
+  projectBoxes.forEach((b) => b.addEventListener("change", () => {
+    allCb.checked = projectBoxes.every((x) => x.checked);
+  }));
+
+  const encryptCb = el("input", { type: "checkbox", class: "accent-slate-700" });
+  const tokenReveal = el("span", { class: "font-mono text-slate-800 break-all" });
+  const showTokenLink = el("button", { class: "text-slate-500 hover:text-slate-800 underline" }, "show token");
+  showTokenLink.addEventListener("click", async () => {
+    clearErr();
+    try {
+      const { token } = await api("/export/token");
+      tokenReveal.textContent = token;
+      showTokenLink.classList.add("hidden");
+    } catch (e) { showErr(e.message); }
+  });
+
+  const doExport = async () => {
+    clearErr();
+    const selected = projectBoxes.filter((b) => b.checked).map((b) => b.dataset.slug);
+    if (state.projects.length && !selected.length) { showErr("Select at least one project to export."); return; }
+    const projects = (selected.length === projectBoxes.length) ? null : selected; // null = all
+    try {
+      const data = await api("/export", {
+        method: "POST",
+        body: JSON.stringify({ projects, encrypt: encryptCb.checked }),
+      });
+      const ts = new Date().toISOString().replace(/[:T]/g, "-").slice(0, 19);
+      const enc = data.devlog_encrypted ? ".enc" : "";
+      saveFile(`devlog-export-${ts}${enc}.json`, JSON.stringify(data, null, 2));
+      const what = data.devlog_encrypted ? "encrypted export" :
+        (data.partial ? `${data.projects.length} project(s)` : "all projects");
+      toast(`Exported ${what}`, 3000);
+    } catch (e) { showErr(e.message); }
+  };
+
+  // ---- Import ----
+  const fileInput = el("input", { type: "file", accept: "application/json,.json", class: "hidden" });
+  let parsed = null, encryptedFile = false;
+  const tokenInput = el("input", {
+    type: "password", placeholder: "Token from the exporting app",
+    class: "hidden w-full border border-slate-300 rounded px-2 py-1.5 text-sm mt-2",
+  });
+  const modeMerge = el("input", { type: "radio", name: "impmode", value: "merge", checked: true, class: "accent-slate-700" });
+  const modeReplace = el("input", { type: "radio", name: "impmode", value: "replace_projects", class: "accent-slate-700" });
+  const modeRow = el("div", { class: "hidden mt-2 space-y-1 text-sm text-slate-700" },
+    el("label", { class: "flex items-center gap-2" }, modeMerge,
+      el("span", {}, "Merge — add as new projects (existing data kept)")),
+    el("label", { class: "flex items-center gap-2" }, modeReplace,
+      el("span", {}, "Replace matching projects — overwrite projects with the same slug")),
+  );
+  const summary = el("div", { class: "hidden text-sm mt-2 space-y-0.5" });
+  const importBtn = el("button", { class: `${BTN_PLAIN} hidden mt-3` }, "Import");
+
+  const countsStr = (tables) => Object.entries(tables)
+    .filter(([, v]) => Array.isArray(v) && v.length)
+    .map(([k, v]) => `${v.length} ${k}`).join(", ");
+
+  fileInput.addEventListener("change", async () => {
+    summary.classList.add("hidden"); modeRow.classList.add("hidden");
+    importBtn.classList.add("hidden"); tokenInput.classList.add("hidden");
+    clearErr(); parsed = null; encryptedFile = false;
+    const f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    let doc;
+    try { doc = JSON.parse(await f.text()); }
+    catch { showErr("Not a valid JSON file."); return; }
+
+    if (doc && doc.devlog_encrypted) {
+      encryptedFile = true;
+      parsed = doc;
+      summary.replaceChildren(
+        el("div", { class: "text-slate-700" }, `File: ${f.name}`),
+        el("div", { class: "text-slate-500" }, "Encrypted export — enter the token to import."),
+      );
+      tokenInput.classList.remove("hidden");
+    } else {
+      if (doc == null || doc.schema_version !== 1 || typeof doc.tables !== "object") {
+        showErr("This does not look like a devlog export (missing schema_version / tables).");
+        return;
+      }
+      parsed = doc;
+      const scope = doc.partial ? `Projects: ${(doc.projects || []).join(", ") || "—"}` : "Full backup (all projects)";
+      summary.replaceChildren(
+        el("div", { class: "text-slate-700" }, `File: ${f.name}`),
+        el("div", { class: "text-slate-600" }, scope),
+        el("div", { class: "text-slate-500" }, `Contains: ${countsStr(doc.tables)}`),
+      );
+    }
+    summary.classList.remove("hidden");
+    modeRow.classList.remove("hidden");
+    importBtn.classList.remove("hidden");
+  });
+
+  importBtn.addEventListener("click", async () => {
+    if (!parsed) return;
+    if (encryptedFile && !tokenInput.value) { showErr("Enter the token to decrypt this export."); return; }
+    const mode = modeReplace.checked ? "replace_projects" : "merge";
+    if (mode === "replace_projects") {
+      const typed = prompt(
+        "REPLACE matching projects with the file's versions?\n\n" +
+        "Projects in this backend that share a slug with the file will be " +
+        "deleted and reloaded. Other projects are untouched. A backup is saved first.\n\n" +
+        "Type REPLACE to confirm:"
+      );
+      if (typed !== "REPLACE") { if (typed != null) toast("Not confirmed — nothing changed"); return; }
+    }
+    clearErr();
+    try {
+      const res = await api("/import", {
+        method: "POST",
+        body: JSON.stringify({ mode, data: parsed, token: encryptedFile ? tokenInput.value : null }),
+      });
+      close();
+      await refreshAll();
+      const imp = Object.entries(res.imported_counts).filter(([, v]) => v).map(([k, v]) => `${v} ${k}`).join(", ");
+      toast(`Imported ${imp || "nothing"}. Backup: ${res.backup_path}`, 6000);
+    } catch (e) { showErr(e.message); }
+  });
+
+  // ---- Backups ----
+  const backupList = el("div", { class: "mt-2 space-y-1 text-sm" });
+  const renderBackups = async () => {
+    backupList.replaceChildren(el("div", { class: "text-slate-400" }, "Loading…"));
+    try {
+      const list = await api("/backups");
+      if (!list.length) { backupList.replaceChildren(el("div", { class: "text-slate-400" }, "No backups yet.")); return; }
+      backupList.replaceChildren(...list.map((b) => el("div", {
+        class: "flex items-center gap-2 border border-slate-200 rounded px-2 py-1",
+      },
+        el("div", { class: "min-w-0" },
+          el("div", { class: "text-slate-700" }, fmtWhen(b.created_at)),
+          el("div", { class: "text-slate-400 text-xs truncate" }, `${b.tag || "backup"} · ${fmtBytes(b.size)}`)),
+        el("button", { class: "ml-auto text-sm text-red-600 hover:text-red-700", onclick: () => doRestore(b) }, "Restore"),
+      )));
+    } catch (e) { backupList.replaceChildren(el("div", { class: "text-red-600" }, e.message)); }
+  };
+  const doCreateBackup = async () => {
+    clearErr();
+    try { await api("/backups", { method: "POST" }); toast("Backup created", 2500); await renderBackups(); }
+    catch (e) { showErr(e.message); }
+  };
+  const doRestore = async (b) => {
+    const typed = prompt(
+      `RESTORE this backend to the backup from ${fmtWhen(b.created_at)}?\n\n` +
+      "This replaces ALL current data with that snapshot. A safety backup of the " +
+      "current state is saved first, so you can undo it.\n\n" +
+      "Type RESTORE to confirm:"
+    );
+    if (typed !== "RESTORE") { if (typed != null) toast("Not confirmed — nothing changed"); return; }
+    clearErr();
+    try {
+      const res = await api("/backups/restore", { method: "POST", body: JSON.stringify({ name: b.name, confirm: true }) });
+      close();
+      await refreshAll();
+      toast(`Restored. Safety backup: ${res.safety_backup}`, 6000);
+    } catch (e) { showErr(e.message); }
+  };
+
+  m.append(
+    el("div", { class: "flex items-center gap-2 mb-3" },
+      el("div", { class: "font-semibold" }, "Data — backup, export & import"),
+      el("button", { class: "ml-auto text-slate-400 hover:text-slate-800", onclick: close }, "✕"),
+    ),
+    el("div", { class: "space-y-4" },
+      // Export
+      el("div", {},
+        el("div", { class: SECTION_LABEL }, "Export"),
+        el("div", { class: "text-sm text-slate-600 mb-2" }, "Download selected projects as a JSON file."),
+        el("label", { class: "flex items-center gap-2 text-sm text-slate-700 font-medium mb-1" },
+          allCb, el("span", {}, "All projects")),
+        projList,
+        el("label", { class: "flex items-center gap-2 text-sm text-slate-700 mt-2" },
+          encryptCb, el("span", {}, "Encrypt file with the app token")),
+        el("div", { class: "text-xs text-slate-500 mt-1" },
+          "You'll need this token to import the file elsewhere. ", showTokenLink, " ", tokenReveal),
+        el("button", { class: `${BTN_PLAIN} mt-2`, onclick: doExport }, "⇩ Export"),
+      ),
+      el("hr", { class: "border-slate-200" }),
+      // Import
+      el("div", {},
+        el("div", { class: SECTION_LABEL }, "Import"),
+        el("div", { class: "text-sm text-slate-600 mb-2" }, "Load a devlog export file into this backend."),
+        el("button", { class: BTN_PLAIN, onclick: () => fileInput.click() }, "Choose export file…"),
+        fileInput, summary, tokenInput, modeRow, importBtn,
+      ),
+      el("hr", { class: "border-slate-200" }),
+      // Backups
+      el("div", {},
+        el("div", { class: SECTION_LABEL }, "Backups"),
+        el("div", { class: "text-sm text-slate-600 mb-2" },
+          "Full snapshots of this backend. Restore rolls everything back to a snapshot."),
+        el("button", { class: BTN_PLAIN, onclick: doCreateBackup }, "＋ Create backup now"),
+        backupList,
+      ),
+    ),
+    errBox,
+  );
+
+  renderBackups();
+  overlay.classList.remove("hidden");
+}
+
+$("#data-menu") && $("#data-menu").addEventListener("click", openDataModal);
+
+// ---------- read-only share links ----------
+function openShareModal(it) {
+  const overlay = $("#modal-overlay");
+  const m = $("#modal");
+  m.replaceChildren();
+  const close = () => overlay.classList.add("hidden");
+  const errBox = el("div", { class: "hidden text-sm text-red-600 mt-2" });
+  const list = el("div", { class: "mt-3 space-y-2" });
+
+  const fmtExp = (iso) => {
+    try { return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); }
+    catch { return iso; }
+  };
+
+  const copyText = async (text) => {
+    try { await navigator.clipboard.writeText(text); toast("Copied"); }
+    catch { toast("Copy failed — select the text and copy manually"); }
+  };
+
+  const renderShare = (s) => {
+    // Primary link is `url` — built from how you're accessing the app, so it
+    // works right here. The LAN link only works when the backend serves on the
+    // network (serving_lan), so it's shown copyable only then.
+    const urlField = el("input", {
+      type: "text", value: s.url, readonly: "readonly",
+      class: "flex-1 border border-slate-300 rounded px-2 py-1 text-xs font-mono bg-slate-50",
+      onclick: (e) => e.target.select(),
+    });
+    const lanRow = s.serving_lan
+      ? el("div", { class: "flex items-center gap-2 text-xs mt-1" },
+          el("span", { class: "text-emerald-600 whitespace-nowrap" }, "✓ Other devices"),
+          el("input", {
+            type: "text", value: s.lan_url, readonly: "readonly",
+            class: "flex-1 border border-slate-200 rounded px-2 py-0.5 font-mono bg-slate-50 text-slate-600",
+            onclick: (e) => e.target.select(),
+          }),
+          el("button", { class: "px-2 py-0.5 border border-slate-300 rounded hover:bg-slate-100",
+            onclick: () => copyText(s.lan_url) }, "Copy"))
+      : el("div", { class: "text-xs mt-1 text-amber-700" },
+          "⚠ Reachable only on this machine. To open it on another device, run the ",
+          el("span", { class: "font-mono" }, "backend with make serve-lan"),
+          " (or ", el("span", { class: "font-mono" }, "--host 0.0.0.0"),
+          ") and reopen the app from your machine's network address.");
+    return el("div", { class: "border border-slate-200 rounded p-2" },
+      el("div", { class: "flex items-center gap-2" },
+        urlField,
+        el("button", { class: "px-2 py-1 text-xs border border-slate-300 rounded hover:bg-slate-100",
+          onclick: () => copyText(s.url) }, "Copy"),
+        el("button", { class: "px-2 py-1 text-xs border border-red-300 text-red-600 rounded hover:bg-red-50",
+          onclick: async () => {
+            try { await api(`/shares/${s.token}`, { method: "DELETE" }); toast("Revoked"); await refresh(); }
+            catch (e) { errBox.textContent = e.message; errBox.classList.remove("hidden"); }
+          } }, "Revoke"),
+      ),
+      el("div", { class: "text-xs text-slate-500 mt-1" }, "Expires " + fmtExp(s.expires_at)),
+      lanRow,
+    );
+  };
+
+  const refresh = async () => {
+    try {
+      const shares = await api(`/items/${it.id}/shares`);
+      list.replaceChildren(
+        shares.length
+          ? el("div", { class: "text-xs uppercase tracking-wider text-slate-500 mb-1" }, "Active links")
+          : el("div", { class: "text-sm text-slate-400" }, "No active share links."),
+        ...shares.map(renderShare),
+      );
+    } catch (e) { errBox.textContent = e.message; errBox.classList.remove("hidden"); }
+  };
+
+  let days = 30;
+  const daysInput = el("input", {
+    type: "number", min: "1", value: "30",
+    class: "w-16 border border-slate-300 rounded px-2 py-1 text-sm",
+    oninput: (e) => { days = Number(e.target.value) || 30; },
+  });
+
+  const createBtn = el("button", {
+    class: "px-3 py-1.5 text-sm rounded bg-slate-900 text-white hover:bg-slate-800",
+    onclick: async () => {
+      errBox.classList.add("hidden");
+      try {
+        await api(`/items/${it.id}/share`, { method: "POST", body: JSON.stringify({ days }) });
+        toast("Share link created");
+        await refresh();
+      } catch (e) { errBox.textContent = e.message; errBox.classList.remove("hidden"); }
+    },
+  }, "Create link");
+
+  m.append(
+    el("div", { class: "flex items-center gap-2 mb-3" },
+      el("div", { class: "font-semibold" }, "Share — read-only link"),
+      el("button", { class: "ml-auto text-slate-400 hover:text-slate-800", onclick: close }, "✕"),
+    ),
+    el("div", { class: "text-sm text-slate-600 mb-3" },
+      "Creates a link to a read-only ", el("span", { class: "font-medium" }, "focus view"),
+      " of this item. Anyone who can reach this backend can open it until it expires."),
+    el("div", { class: "flex items-center gap-2" },
+      el("span", { class: "text-sm text-slate-600" }, "Expires in"),
+      daysInput,
+      el("span", { class: "text-sm text-slate-600" }, "days"),
+      el("span", { class: "flex-1" }),
+      createBtn,
+    ),
+    list,
+    errBox,
+  );
+
+  overlay.classList.remove("hidden");
+  refresh();
+}
+
 $("#modal-overlay").addEventListener("click", (e) => {
   if (e.target.id === "modal-overlay") $("#modal-overlay").classList.add("hidden");
 });
 
 // ESC closes any open modal (capture, project, history, drawing preview).
+// ---------- find in note (Cmd/Ctrl+F) ----------
+// A lightweight in-page find scoped to the open item's detail pane: highlights
+// every match and steps between them. Works in both the browser and the native
+// (WKWebView) app, which has no built-in find UI.
+const find = { bar: null, input: null, count: null, hits: [], active: -1, term: "" };
+
+function findClearHighlights() {
+  for (const m of find.hits) {
+    const parent = m.parentNode;
+    if (!parent) continue;
+    parent.replaceChild(document.createTextNode(m.textContent), m);
+    parent.normalize();
+  }
+  find.hits = [];
+  find.active = -1;
+}
+
+function findRun(term) {
+  findClearHighlights();
+  find.term = term;
+  const scope = $("#detail");
+  if (!term || !scope || scope.classList.contains("hidden")) { findUpdateCount(); return; }
+  const needle = term.toLowerCase();
+
+  // Collect matches first (mutating the tree while walking it is unsafe).
+  const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!node.nodeValue || !node.nodeValue.toLowerCase().includes(needle)) return NodeFilter.FILTER_REJECT;
+      const tag = node.parentNode && node.parentNode.nodeName;
+      if (tag === "SCRIPT" || tag === "STYLE" || tag === "TEXTAREA") return NodeFilter.FILTER_REJECT;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const targets = [];
+  while (walker.nextNode()) targets.push(walker.currentNode);
+
+  for (const node of targets) {
+    const text = node.nodeValue;
+    const lower = text.toLowerCase();
+    let idx = lower.indexOf(needle), from = 0;
+    if (idx === -1) continue;
+    const frag = document.createDocumentFragment();
+    while (idx !== -1) {
+      if (idx > from) frag.appendChild(document.createTextNode(text.slice(from, idx)));
+      const mark = el("mark", { class: "find-hit" }, text.slice(idx, idx + needle.length));
+      frag.appendChild(mark);
+      find.hits.push(mark);
+      from = idx + needle.length;
+      idx = lower.indexOf(needle, from);
+    }
+    if (from < text.length) frag.appendChild(document.createTextNode(text.slice(from)));
+    node.parentNode.replaceChild(frag, node);
+  }
+
+  if (find.hits.length) findGo(0);
+  findUpdateCount();
+}
+
+function findUpdateCount() {
+  if (!find.count) return;
+  const n = find.hits.length;
+  find.count.textContent = n ? `${find.active + 1}/${n}` : (find.term ? "0/0" : "");
+  find.count.classList.toggle("none", !!find.term && n === 0);
+}
+
+function findGo(i) {
+  if (!find.hits.length) return;
+  if (find.active >= 0 && find.hits[find.active]) find.hits[find.active].classList.remove("active");
+  find.active = (i + find.hits.length) % find.hits.length;
+  const m = find.hits[find.active];
+  m.classList.add("active");
+  m.scrollIntoView({ block: "center", behavior: "smooth" });
+  findUpdateCount();
+}
+
+function findNext(dir) { if (find.hits.length) findGo(find.active + dir); }
+
+function closeFindBar() {
+  findClearHighlights();
+  find.term = "";
+  if (find.bar) { find.bar.remove(); find.bar = null; find.input = find.count = null; }
+}
+
+function openFindBar() {
+  if (find.bar) { find.input.focus(); find.input.select(); return; }
+  find.input = el("input", { type: "text", placeholder: "Find in note…", spellcheck: "false" });
+  find.count = el("span", { class: "find-count" });
+  const debounced = (() => { let t; return (v) => { clearTimeout(t); t = setTimeout(() => findRun(v), 120); }; })();
+  find.input.addEventListener("input", (e) => debounced(e.target.value.trim()));
+  find.input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); findNext(e.shiftKey ? -1 : 1); }
+    else if (e.key === "Escape") { e.preventDefault(); closeFindBar(); }
+  });
+  find.bar = el("div", { id: "find-bar" },
+    el("span", { class: "text-slate-400 text-sm" }, "🔍"),
+    find.input,
+    find.count,
+    el("button", { title: "Previous (Shift+Enter)", onclick: () => findNext(-1) }, "↑"),
+    el("button", { title: "Next (Enter)", onclick: () => findNext(1) }, "↓"),
+    el("button", { title: "Close (Esc)", onclick: closeFindBar }, "✕"),
+  );
+  document.body.appendChild(find.bar);
+  find.input.focus();
+}
+
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "f") {
+    // Only hijack the shortcut when an item's detail pane is showing.
+    const detail = $("#detail");
+    if (state.selected && detail && !detail.classList.contains("hidden")) {
+      e.preventDefault();
+      openFindBar();
+    }
+  }
+});
+
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
+  if (find.bar) { e.preventDefault(); closeFindBar(); return; }
   const overlay = $("#modal-overlay");
   if (overlay && !overlay.classList.contains("hidden")) {
     e.preventDefault();
@@ -2396,9 +3017,38 @@ function fmtSessionTime(iso) {
   const d = new Date(iso);
   return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 }
+// A stored ISO timestamp → the local YYYY-MM-DD for a <input type="date">.
+function isoToDateInput(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+// A <input type="date"> value (YYYY-MM-DD) → ISO at local midnight, so the day
+// round-trips through local-time bucketing on the calendar without drifting.
+function dateInputToIso(dateStr) {
+  if (!dateStr) return null;
+  return localInputToIso(dateStr + "T00:00");
+}
+// Parse an "estimate" input (hours as a decimal, e.g. "1.5") → whole minutes.
+function estimateInputToMinutes(val) {
+  const v = (val ?? "").toString().trim();
+  if (v === "") return null;
+  const hours = Number(v);
+  if (!isFinite(hours) || hours < 0) return null;
+  return Math.round(hours * 60);
+}
+// Minutes → a compact "1h 30m" / "45m" label; "" when unset.
+function fmtEstimate(minutes) {
+  if (minutes == null) return "";
+  return fmtDuration(minutes * 60);
+}
 
 // Selected stats periods (sticky within session)
 const statsSel = { week: null, month: null }; // each: {range_from, range_to, label} | null=current
+
+// Calendar view: month currently shown on the home page (sticky within session).
+const calView = { year: new Date().getFullYear(), month: new Date().getMonth() }; // month is 0-indexed
 
 function currentWeekRange() {
   const wk = isoWeekNumber();
@@ -2447,6 +3097,7 @@ async function renderHome() {
       bookmarksSection(pinned),
       doingSection(doing),
       todaySection(todayList),
+      calendarSection(),
       searchSection(),
       statsSection(sToday, sWeek, sMonth, periods, weekR, monthR),
     )
@@ -2471,6 +3122,269 @@ async function refreshStatsOnly() {
   } catch (e) {
     block.replaceChildren(el("div", { class: "text-sm text-red-600" }, "Failed: " + e.message));
   }
+}
+
+// ---------- calendar ----------
+const _pad2 = (n) => String(n).padStart(2, "0");
+const dateKey = (y, m0, d) => `${y}-${_pad2(m0 + 1)}-${_pad2(d)}`;
+
+function monthRangeIso(year, month) {
+  // month is 0-indexed; returns inclusive {from, to} as local YYYY-MM-DD.
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  return { from: dateKey(year, month, 1), to: dateKey(year, month, daysInMonth) };
+}
+
+// Returns a <section> that mounts the month grid and fetches its own data,
+// so the ◀/▶ month navigation can refresh independently of the rest of home.
+function calendarSection() {
+  const sec = el("section", { id: "calendar-block" },
+    el("div", { class: "text-sm text-slate-400" }, "Loading calendar…"),
+  );
+  renderCalendar(sec);
+  return sec;
+}
+
+async function renderCalendar(container) {
+  const sec = container || $("#calendar-block");
+  if (!sec) return;
+  const { year, month } = calView;
+  const { from, to } = monthRangeIso(year, month);
+
+  let items = [], stats = null;
+  try {
+    [items, stats] = await Promise.all([
+      api("/items?limit=1000"),
+      api(`/stats?from=${from}&to=${to}`),
+    ]);
+  } catch (e) {
+    sec.replaceChildren(el("div", { class: "text-sm text-red-600" }, "Calendar failed: " + e.message));
+    return;
+  }
+
+  // Seconds tracked per local day (keyed YYYY-MM-DD, matching the stats API).
+  const secByDay = new Map();
+  for (const b of (stats?.by_day || [])) secByDay.set(b.date, b.seconds);
+
+  // Tasks (by due date) and notes (by date) falling in this month, bucketed by
+  // local day. Both use the shared due_at column.
+  const dueByDay = new Map();
+  for (const it of items) {
+    if (it.kind !== "task" && it.kind !== "note") continue;
+    const due = it.dueAt ?? it.due_at;
+    if (!due) continue;
+    const d = new Date(due);
+    if (d.getFullYear() !== year || d.getMonth() !== month) continue;
+    const key = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+    if (!dueByDay.has(key)) dueByDay.set(key, []);
+    dueByDay.get(key).push(it);
+  }
+
+  const label = new Date(year, month, 1).toLocaleString(undefined, { month: "long", year: "numeric" });
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const leading = (new Date(year, month, 1).getDay() + 6) % 7; // Monday-first offset
+  const todayKey = todayLocalIso();
+
+  const nav = (delta) => () => {
+    let m = calView.month + delta, y = calView.year;
+    if (m < 0) { m = 11; y -= 1; }
+    else if (m > 11) { m = 0; y += 1; }
+    calView.month = m; calView.year = y;
+    renderCalendar();
+  };
+  const isCurrentMonth = year === new Date().getFullYear() && month === new Date().getMonth();
+
+  const header = el("div", { class: "flex items-center justify-between mb-3" },
+    el("h2", { class: "text-sm font-semibold uppercase tracking-wider text-slate-500" }, "Calendar"),
+    el("div", { class: "flex items-center gap-1" },
+      el("button", {
+        class: "px-2 py-0.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded",
+        title: "Previous month", onclick: nav(-1),
+      }, "◀"),
+      el("div", { class: "text-sm font-medium text-slate-700 w-36 text-center" }, label),
+      el("button", {
+        class: "px-2 py-0.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded",
+        title: "Next month", onclick: nav(1),
+      }, "▶"),
+      isCurrentMonth ? null : el("button", {
+        class: "ml-1 px-2 py-0.5 text-xs border border-slate-300 rounded text-slate-600 hover:bg-slate-100",
+        title: "Jump to current month",
+        onclick: () => { calView.year = new Date().getFullYear(); calView.month = new Date().getMonth(); renderCalendar(); },
+      }, "Today"),
+    ),
+  );
+
+  const dow = el("div", { class: "grid grid-cols-7 gap-1 mb-1" },
+    ...["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) =>
+      el("div", { class: "text-[10px] font-medium uppercase tracking-wide text-slate-400 text-center" }, d)),
+  );
+
+  const cells = [];
+  for (let i = 0; i < leading; i++) cells.push(el("div", { class: "min-h-[76px]" }));
+  for (let day = 1; day <= daysInMonth; day++) {
+    cells.push(calDayCell(year, month, day, { dueByDay, secByDay, todayKey }));
+  }
+
+  sec.replaceChildren(header, dow, el("div", { class: "grid grid-cols-7 gap-1" }, ...cells));
+}
+
+function calDayCell(year, month, day, { dueByDay, secByDay, todayKey }) {
+  const key = dateKey(year, month, day);
+  const isToday = key === todayKey;
+  const due = dueByDay.get(key) || [];
+  const secs = secByDay.get(key) || 0;
+
+  // The whole cell is a click target that opens the day detail; chips inside
+  // stop propagation and jump straight to their item.
+  const cell = el("div", {
+    class: "min-h-[76px] border rounded p-1 flex flex-col gap-0.5 bg-white cursor-pointer hover:border-blue-300 "
+      + (isToday ? "border-blue-400 ring-1 ring-blue-200" : "border-slate-200"),
+    title: "View / add for this day",
+    onclick: () => openDayModal(key),
+  });
+
+  cell.append(
+    el("div", { class: "flex items-center justify-between" },
+      el("span", { class: "text-xs font-medium " + (isToday ? "text-blue-600" : "text-slate-500") }, String(day)),
+      secs >= 60 ? el("span", {
+        class: "text-[10px] font-mono text-emerald-600 tabular-nums",
+        title: "Time tracked",
+      }, fmtHours(secs)) : null,
+    ),
+  );
+
+  for (const it of due.slice(0, 3)) {
+    const proj = state.projects.find((p) => p.id === (it.projectId ?? it.project_id));
+    const isNote = it.kind === "note";
+    const done = it.status === "done";
+    const chipColor = done
+      ? "line-through text-slate-400 bg-slate-50"
+      : isNote ? "text-sky-700 bg-sky-50 hover:bg-sky-100" : "text-amber-800 bg-amber-50 hover:bg-amber-100";
+    cell.append(el("button", {
+      class: "text-[11px] leading-tight text-left truncate rounded px-1 py-0.5 " + chipColor,
+      title: (isNote ? "📝 " : "") + (it.title || "(untitled)") + (proj ? ` — ${proj.name}` : ""),
+      onclick: (e) => {
+        e.stopPropagation();
+        state.pseudo = null; state.scopeProjectId = proj?.id ?? null; state.kind = it.kind;
+        clearSel(); renderSidebar(); dispatchView().then(() => selectItem(it.id));
+      },
+    }, (isNote ? "📝 " : "") + (it.title || "(untitled)")));
+  }
+  if (due.length > 3) {
+    cell.append(el("div", { class: "text-[10px] text-slate-400 px-1" }, `+${due.length - 3} more`));
+  }
+
+  return cell;
+}
+
+// Day detail: lists what happened on a given local day (worked / completed /
+// created / due) and offers quick-add of a task or note dated to that day.
+async function openDayModal(dayKey) {
+  const overlay = $("#modal-overlay");
+  const m = $("#modal");
+  const close = () => overlay.classList.add("hidden");
+
+  const heading = new Date(dayKey + "T00:00").toLocaleDateString(undefined, {
+    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  });
+
+  const openItem = (it) => {
+    const proj = state.projects.find((p) => p.id === (it.projectId ?? it.project_id));
+    close();
+    state.pseudo = null; state.scopeProjectId = proj?.id ?? null; state.kind = it.kind;
+    clearSel(); renderSidebar(); dispatchView().then(() => selectItem(it.id));
+  };
+
+  const header = el("div", { class: "flex items-center gap-2 mb-3" },
+    el("div", { class: "font-semibold text-slate-800" }, heading),
+    el("button", { class: "ml-auto text-slate-400 hover:text-slate-800", onclick: close }, "✕"),
+  );
+  const quickAdd = el("div", { class: "flex gap-2 mb-3" },
+    el("button", {
+      class: "px-2.5 py-1 text-sm rounded border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100",
+      onclick: () => openNewItemModal({ tab: "task", dueDate: dayKey, onCreated: () => { if (state.pseudo === "home") renderCalendar(); } }),
+    }, "+ Task"),
+    el("button", {
+      class: "px-2.5 py-1 text-sm rounded border border-sky-300 text-sky-800 bg-sky-50 hover:bg-sky-100",
+      onclick: () => openNewItemModal({ tab: "note", dueDate: dayKey, onCreated: () => { if (state.pseudo === "home") renderCalendar(); } }),
+    }, "+ Note"),
+  );
+
+  m.replaceChildren(header, quickAdd, el("div", { class: "text-sm text-slate-400" }, "Loading…"));
+  overlay.classList.remove("hidden");
+
+  let stats = null, items = [];
+  try {
+    [stats, items] = await Promise.all([
+      api(`/stats?from=${dayKey}&to=${dayKey}`),
+      api("/items?limit=1000"),
+    ]);
+  } catch (e) {
+    m.replaceChildren(header, quickAdd, el("div", { class: "text-sm text-red-600" }, "Failed: " + e.message));
+    return;
+  }
+
+  const byId = new Map(items.map((it) => [it.id, it]));
+  const projName = (it) => state.projects.find((p) => p.id === (it.projectId ?? it.project_id))?.name || "";
+
+  // A tappable row for an item, with optional trailing meta (e.g. time spent).
+  const itemRow = (it, meta) => el("button", {
+    class: "w-full flex items-center gap-2 text-left px-2 py-1.5 rounded hover:bg-slate-100 border border-transparent",
+    onclick: () => openItem(it),
+  },
+    el("span", { class: "text-[10px] uppercase tracking-wide px-1 rounded "
+      + (it.kind === "task" ? "bg-amber-100 text-amber-800" : it.kind === "note" ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-600") },
+      it.kind),
+    el("span", { class: "min-w-0 flex-1 truncate text-sm " + (it.status === "done" ? "line-through text-slate-400" : "text-slate-800") },
+      it.title || "(untitled)"),
+    projName(it) ? el("span", { class: "text-xs text-slate-400 shrink-0" }, projName(it)) : null,
+    meta ? el("span", { class: "text-xs font-mono text-slate-500 shrink-0" }, meta) : null,
+  );
+
+  const block = (heading, rows) => rows.length === 0 ? null : el("div", { class: "mb-3" },
+    el("div", { class: "text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1" }, heading),
+    el("div", { class: "grid gap-0.5" }, ...rows),
+  );
+
+  const resolve = (ids) => (ids || []).map((id) => byId.get(id)).filter(Boolean);
+
+  // Worked: from stats by_task (has time + title even if the item is elsewhere).
+  const worked = (stats.by_task || []).map((b) => {
+    const it = byId.get(b.item_id) || { id: b.item_id, kind: "task", title: b.title, status: b.status, project_id: b.project_id };
+    const est = it.estimate_minutes ?? it.estimateMinutes;
+    const meta = fmtDuration(b.seconds) + (est != null ? ` / ${fmtEstimate(est)} est` : "");
+    return itemRow(it, meta);
+  });
+
+  const a = stats.activity || {};
+  const completed = resolve(a.tasks_done).map((it) => itemRow(it));
+  const createdItems = [...resolve(a.tasks_created), ...resolve(a.notes_created), ...resolve(a.links_created)];
+  const created = createdItems.map((it) => itemRow(it));
+
+  // Due / dated that day (tasks by due, notes by date).
+  const dueItems = items.filter((it) => {
+    if (it.kind !== "task" && it.kind !== "note") return false;
+    const due = it.dueAt ?? it.due_at;
+    return due && isoToDateInput(due) === dayKey;
+  });
+  const dueRows = dueItems.map((it) => itemRow(it));
+
+  const totalMeta = stats.total_seconds >= 60
+    ? el("div", { class: "text-xs text-slate-500 mb-3" }, "Total time tracked: " + fmtDuration(stats.total_seconds))
+    : null;
+
+  const sections = [
+    totalMeta,
+    block("Due / dated", dueRows),
+    block("Worked on", worked),
+    block("Completed", completed),
+    block("Created", created),
+  ].filter(Boolean);
+
+  const bodyChildren = sections.length
+    ? sections
+    : [el("div", { class: "text-sm text-slate-400 italic" }, "Nothing recorded for this day yet.")];
+
+  m.replaceChildren(header, quickAdd, ...bodyChildren);
 }
 
 function sectionHeader(title, sub) {
@@ -2613,6 +3527,7 @@ function searchSection() {
   let timer = null;
   const input = el("input", {
     type: "search",
+    id: "home-search",
     placeholder: "Search… (also tries tag:work or tag:urgent)",
     class: "w-full px-3 py-2 text-sm border border-slate-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-400 bg-white",
     oninput: (e) => {
