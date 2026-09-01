@@ -198,15 +198,24 @@ class DevlogWindow(Gtk.ApplicationWindow):
             self.add(_missing_webkit_view())
             return
 
-        self.webview = WebKit2.WebView()
+        # A user-content manager lets the web UI hand us bytes to save. The web
+        # UI's saveFile() posts {name, text} to window.webkit.messageHandlers.
+        # devlogSave (same bridge name as the macOS app); WebKit2GTK ignores
+        # <a download>, so without this exports/backups would silently not save.
+        ucm = WebKit2.UserContentManager()
+        ucm.register_script_message_handler("devlogSave")
+        ucm.connect("script-message-received::devlogSave", self._on_save_message)
+        self.webview = WebKit2.WebView.new_with_user_content_manager(ucm)
         self.webview.connect("decide-policy", self._on_decide_policy)
         self.add(self.webview)
 
-        # Ctrl+R reload.
+        # Ctrl+R reload, Ctrl+F opens the web UI's in-note find bar.
         accels = Gtk.AccelGroup()
         self.add_accel_group(accels)
         accels.connect(Gdk.KEY_r, Gdk.ModifierType.CONTROL_MASK,
                        Gtk.AccelFlags.VISIBLE, lambda *_: bool(self.reload()) or True)
+        accels.connect(Gdk.KEY_f, Gdk.ModifierType.CONTROL_MASK,
+                       Gtk.AccelFlags.VISIBLE, lambda *_: bool(self._open_find()) or True)
 
     def load(self, base_url: str) -> None:
         self.app.base_url = base_url
@@ -220,6 +229,49 @@ class DevlogWindow(Gtk.ApplicationWindow):
     def open_external(self) -> None:
         if self.app.base_url:
             Gtk.show_uri_on_window(self, self.app.base_url, Gtk.get_current_event_time())
+
+    def _open_find(self) -> None:
+        if WebKit2 is not None:
+            self.webview.run_javascript(
+                "window.openFindBar && openFindBar()", None, None, None)
+
+    def _on_save_message(self, ucm, js_result) -> None:
+        # The web UI posted {name, text} via saveFile(); present a native Save
+        # dialog and write the bytes (the browser <a download> path is inert in
+        # WebKit2GTK). js_result is a WebKit2.JavascriptResult wrapping a JSCValue.
+        try:
+            value = js_result.get_js_value()
+            name = value.object_get_property("name").to_string()
+            text = value.object_get_property("text").to_string()
+        except Exception:
+            return
+        self._save_to_file(name or "devlog-export.json", text or "")
+
+    def _save_to_file(self, name: str, text: str) -> None:
+        dialog = Gtk.FileChooserDialog(
+            title="Save export", parent=self, action=Gtk.FileChooserAction.SAVE)
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Save", Gtk.ResponseType.ACCEPT)
+        dialog.set_current_name(name)
+        dialog.set_do_overwrite_confirmation(True)
+        try:
+            if dialog.run() == Gtk.ResponseType.ACCEPT:
+                path = dialog.get_filename()
+                if path:
+                    try:
+                        Path(path).write_text(text, encoding="utf-8")
+                    except OSError as e:
+                        self._error_dialog(f"Could not save file:\n{e}")
+        finally:
+            dialog.destroy()
+
+    def _error_dialog(self, message: str) -> None:
+        dialog = Gtk.MessageDialog(
+            transient_for=self, modal=True,
+            message_type=Gtk.MessageType.ERROR, buttons=Gtk.ButtonsType.OK,
+            text=message)
+        dialog.run()
+        dialog.destroy()
 
     def _on_decide_policy(self, webview, decision, decision_type):
         # Open off-origin link clicks in the system browser; keep same-origin in-app.

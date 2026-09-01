@@ -472,7 +472,7 @@ To make `Cmd+C / V / X / Z / Shift+Z / A` work in the native windows, an `NSAppl
 
 ## 8. Linux app
 
-`clients/linux-app` — a PyGObject + WebKit2GTK window wrapping the same web UI, the Linux counterpart of §7. Tested on Ubuntu + GNOME.
+`clients/linux-app` — a PyGObject + WebKit2GTK window wrapping the same web UI, the Linux counterpart of §7. Tested on Ubuntu + GNOME. Same connect/managed backend modes; exports/backups save via a `devlogSave` script-message handler → GTK file dialog (WebKit2GTK ignores `<a download>`); `Ctrl+F` opens the in-note find bar, `Ctrl+R` reloads.
 
 ### 8.1 Installer
 
