@@ -60,6 +60,29 @@ jobs:
         working-directory: clients/mac-app
         run: ./build.sh
 
+  linux-app:
+    name: Linux app check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: ruff check
+        run: uvx ruff check clients/linux-app
+      - name: Install GTK / WebKit2GTK
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            python3-gi python3-gi-cairo gir1.2-gtk-3.0 xvfb
+          sudo apt-get install -y --no-install-recommends gir1.2-webkit2-4.1 \
+            || sudo apt-get install -y --no-install-recommends gir1.2-webkit2-4.0
+      - name: Import smoke (headless)
+        # It's a GTK script (no compile step); loading it under a virtual display
+        # catches import-time breakage — bad WebKit2 API use, missing deps, etc.
+        run: |
+          xvfb-run -a python3 -c "import importlib.util as u; s = u.spec_from_file_location('devlog_app', 'clients/linux-app/devlog-app.py'); m = u.module_from_spec(s); s.loader.exec_module(m); assert m.WebKit2 is not None, 'WebKit2 failed to load'; print('linux-app import OK; WebKit2:', m.WebKit2)"
+
   docker-build:
     name: Docker build (sanity)
     runs-on: ubuntu-latest

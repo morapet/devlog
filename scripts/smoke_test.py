@@ -105,4 +105,30 @@ if not versions:
     sys.exit("FAIL: expected at least one version")
 print(f"  ✓ {len(versions)} version(s)")
 
+print("== scoped export/import remaps embedded id tokens")
+# A note referencing the task by #id and embedding a drawing by attachment id.
+dia = call("POST", f"/items/{tid}/attachments", json={
+    "kind": "drawing", "title": "d", "data_xml": "<mxfile/>", "data_svg": "<svg/>",
+})
+reftext = f"round-trip #{tid} and ![[drawing:{dia['id']}]] and [[Smoke task]]"
+refnote = call("POST", "/notes", json={"project_id": pid, "body": reftext})
+doc = call("POST", "/export", json={"projects": ["smoke"]})
+imported = call("POST", "/import", json={"mode": "merge", "data": doc})
+new_slug = imported["projects"][0]
+if new_slug == "smoke":
+    sys.exit("FAIL: merge import should not reuse the source slug")
+# Locate the imported copies (ids differ from the originals).
+new_proj = next(p for p in call("GET", "/projects") if p["slug"] == new_slug)
+new_items = call("GET", "/items", params={"project_id": new_proj["id"]})
+new_task = next(i for i in new_items if i["title"] == "Smoke task")
+new_note_id = next(i["id"] for i in new_items if (i.get("body") or "").startswith("round-trip"))
+new_note = call("GET", f"/items/{new_note_id}")  # detail: populates refs_out
+new_att = call("GET", f"/items/{new_task['id']}/attachments")[0]
+body = new_note["body"]
+expect(new_task["id"] != tid, True, "imported task got a fresh id")
+expect(f"#{new_task['id']}" in body and f"#{tid}" not in body, True, "#ref remapped")
+expect(f"![[drawing:{new_att['id']}]]" in body, True, "drawing embed remapped")
+expect("[[Smoke task]]" in body, True, "[[title]] link preserved")
+expect(new_task["id"] in new_note["refs_out"], True, "refs graph points at imported task")
+
 print("\nAll checks passed ✓")

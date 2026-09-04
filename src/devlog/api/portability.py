@@ -23,6 +23,7 @@ Every import takes an automatic hot-backup first, so a mistaken import is always
 recoverable (see also the /backups restore endpoints).
 """
 
+import re
 from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException
@@ -227,6 +228,38 @@ def _insert(c, table: str, row: dict, cols: set[str], overrides: dict) -> int:
     return cur.lastrowid
 
 
+# Embedded id tokens that live inside item title/body text. Scoped imports give
+# every row a fresh id, so these tokens must be rewritten to the new ids or they
+# rot: `![[drawing:N]]` embeds point at the wrong attachment, and `#N` item refs
+# silently re-resolve against the target backend on the next edit (rebuild_refs
+# re-reads the raw text). `[[Title]]` is title-based, not id-based, so it's
+# matched only to be consumed whole — that keeps a `#N` sitting inside a title
+# link from being rewritten out of context. Mirrors REF_PATTERN in web/app.js.
+_TOKEN_RE = re.compile(r"!\[\[drawing:(\d+)\]\]|(?<!\w)#(\d+)\b|\[\[[^\[\]\n]+?\]\]")
+
+
+def _rewrite_tokens(text: str | None, item_map: dict[int, int], attach_map: dict[int, int]) -> str | None:
+    """Remap `![[drawing:N]]` and `#N` tokens to their imported ids.
+
+    A token whose old id was not part of this import is left verbatim: rewriting
+    it would point at an unrelated target row, and dropping it would mangle the
+    user's prose.
+    """
+    if not text:
+        return text
+
+    def sub(m: re.Match) -> str:
+        if m.group(1) is not None:  # ![[drawing:N]]
+            new = attach_map.get(int(m.group(1)))
+            return f"![[drawing:{new}]]" if new is not None else m.group(0)
+        if m.group(2) is not None:  # #N
+            new = item_map.get(int(m.group(2)))
+            return f"#{new}" if new is not None else m.group(0)
+        return m.group(0)  # [[Title]] — consumed whole, left unchanged
+
+    return _TOKEN_RE.sub(sub, text)
+
+
 @router.post("/import", response_model=ImportResult)
 def import_all(req: ImportRequest) -> ImportResult:
     data = req.data
@@ -387,13 +420,45 @@ def _scoped_import(src_tables: dict[str, list], mode: str) -> ImportResult:
             n_iv += 1
 
         at_cols = set(_columns(c, "attachments"))
+        attach_map: dict[int, int] = {}
         n_at = 0
         for a in src_tables.get("attachments", []):
             new_item = item_map.get(a.get("item_id"))
             if new_item is None:
                 continue
-            _insert(c, "attachments", a, at_cols, {"item_id": new_item})
+            new_att = _insert(c, "attachments", a, at_cols, {"item_id": new_item})
+            if a.get("id") is not None:
+                attach_map[a["id"]] = new_att
             n_at += 1
+
+        # --- rewrite embedded id tokens now that every id map is known ---
+        # Items were inserted before attachments existed, so their `#N` /
+        # `![[drawing:N]]` tokens still carry source ids; remap them in place.
+        for it in src_tables.get("items", []):
+            new_id = item_map.get(it.get("id"))
+            if new_id is None:
+                continue
+            new_title = _rewrite_tokens(it.get("title"), item_map, attach_map)
+            new_body = _rewrite_tokens(it.get("body"), item_map, attach_map)
+            if new_title != it.get("title") or new_body != it.get("body"):
+                c.execute(
+                    "UPDATE items SET title = ?, body = ? WHERE id = ?",
+                    (new_title, new_body, new_id),
+                )
+        # Historical snapshots carry the same tokens; rewrite them too so a later
+        # "restore version" doesn't reintroduce stale ids.
+        for v in src_tables.get("item_versions", []):
+            new_item = item_map.get(v.get("item_id"))
+            if new_item is None:
+                continue
+            new_title = _rewrite_tokens(v.get("title"), item_map, attach_map)
+            new_body = _rewrite_tokens(v.get("body"), item_map, attach_map)
+            if new_title != v.get("title") or new_body != v.get("body"):
+                c.execute(
+                    "UPDATE item_versions SET title = ?, body = ? "
+                    "WHERE item_id = ? AND saved_at = ?",
+                    (new_title, new_body, new_item, v.get("saved_at")),
+                )
 
         imported = {
             "projects": len(proj_map),
