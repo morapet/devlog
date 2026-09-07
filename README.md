@@ -1,38 +1,69 @@
 # devlog
 
-Local-first developer task / note / link tracker. Single SQLite file, FastAPI backend, vanilla-JS web UI, a native SwiftUI macOS app, and an MCP server so an LLM can drive everything.
+Local-first developer **task / note / link tracker** — one SQLite file, a FastAPI backend, a fast vanilla-JS web UI, native desktop apps, and an MCP server so an LLM can drive it all.
 
-- **Tasks · notes · links** scoped to projects, with cross-refs (`#42`, `[[Title]]`), tags, full-text search, and a rich markdown editor.
-- **Time tracking** with single-doing invariant, editable sessions, end-of-workday auto-pause.
-- **Drawings** via a vendored drawio webapp — fully offline; tokens like `![[drawing:N]]` render inline.
-- **Markdown** via markdown-it with footnotes, task lists, anchors, a custom MkDocs-style admonition rule, highlight.js, and Mermaid.
-- **MCP server** (`devlog-mcp`) exposing 18 tools so Claude can create projects/tasks/notes/links/sessions and search.
+![Devlog interface](docs/interface.svg)
 
-## Quick start
+<!-- Prefer a real screenshot or short GIF? Drop it in docs/ and swap the line above:
+     ![Devlog](docs/screenshot.png)      ·      ![Devlog demo](docs/demo.gif) -->
 
-### Option A — Pull the prebuilt image from GHCR (fastest, no build, no clone)
+- **Tasks · notes · links** scoped to projects, with cross-refs (`#42`, `[[Title]]`), tags, and full-text search.
+- **A document-grade markdown view** — heading hierarchy, a toggleable table of contents with optional numbering, footnotes, task lists, admonitions, code highlighting, and Mermaid.
+- **Time tracking** — one task "doing" at a time, editable sessions, end-of-workday auto-pause.
+- **Drawings** — a vendored, fully-offline drawio; `![[drawing:N]]` renders inline.
+- **MCP server** — `devlog-mcp` exposes 18 tools so Claude can create and search everything.
 
-GitHub Actions publishes a multi-arch image (`linux/amd64` + `linux/arm64`) to **`ghcr.io/morapet/devlog`** on every push to `main` and on `v*.*.*` tags. drawio is baked in.
+---
+
+## Run it
+
+Devlog is a small backend plus a web UI. The nicest way to use it day-to-day is a **native desktop app**; if you just want to try it, one Docker command gets you there.
+
+### macOS — native app (recommended)
+
+A real macOS window hosting the full UI (native Find, save/open panels, its own Dock icon).
 
 ```bash
-# one-shot run with a host volume for data
-mkdir -p ~/devlog-data
-docker run -d --name devlog \
-    -p 8765:8765 \
-    -v ~/devlog-data:/data \
-    --restart unless-stopped \
-    ghcr.io/morapet/devlog:latest
-open http://localhost:8765
+git clone https://github.com/morapet/devlog.git
+cd devlog
+make install     # one-time: backend deps via uv
+make dev &       # start the backend on http://127.0.0.1:8765  (leave it running)
+make mac         # build + open the app  (needs Xcode Command Line Tools)
 ```
 
-Update later:
+The app opens in **Connect** mode and talks to `http://127.0.0.1:8765` with zero config. To keep it around: `make mac-install` copies **Devlog.app** into `/Applications` (`make mac-dmg` builds a drag-to-Applications installer).
+
+> Want the backend to start on login so you don't run `make dev`? See **[More ways to run the backend](#more-ways-to-run-the-backend)** below (Docker with `--restart`, or a service). Then just open the app.
+
+### Linux — native app
+
 ```bash
-docker pull ghcr.io/morapet/devlog:latest
-docker rm -f devlog
-# …then re-run the docker run command above
+make app-linux   # GTK3 + WebKit2GTK window, apt-installs deps, adds autostart
 ```
 
-Or use `docker compose` with the published image (drop into a new dir as `docker-compose.yml`):
+Pairs well with the systemd backend service (see below) for a run-on-login setup: `make install-linux` does both.
+
+### Any OS — just the web UI (no app to build)
+
+Fastest path, no clone, no build — the prebuilt image from GHCR (drawio baked in):
+
+```bash
+docker run -d --name devlog -p 8765:8765 -v ~/devlog-data:/data \
+    --restart unless-stopped ghcr.io/morapet/devlog:latest
+open http://localhost:8765      # or just visit it in a browser
+```
+
+The web UI is also an installable PWA — in the browser, use *Install app* / *Add to Home Screen*.
+
+---
+
+<details>
+<summary><b>More ways to run the backend</b> — Docker Compose, uv, CLI tool, systemd</summary>
+
+### Docker Compose (published image)
+
+Drop this in a directory as `docker-compose.yml`:
+
 ```yaml
 services:
   devlog:
@@ -47,142 +78,80 @@ services:
 docker compose up -d
 ```
 
-Available tags:
+Update later: `docker pull ghcr.io/morapet/devlog:latest && docker rm -f devlog` then re-run.
 
-| Tag | Source |
-|---|---|
-| `latest` | most recent push to `main` |
-| `main` | most recent push to `main` |
-| `v1.2.3`, `1.2`, `1` | semver from a `v*.*.*` git tag |
-| `sha-abc1234` | a specific commit |
+Image tags: `latest` / `main` (newest push to `main`), `v1.2.3` / `1.2` / `1` (semver tags), `sha-abc1234` (a commit).
 
-> Note: GHCR packages start as private. After the first publish, go to https://github.com/users/morapet/packages/container/devlog → Package settings → "Change visibility" → Public, so others can `docker pull` without auth.
-
-### Option B — Build the Docker image from source
+### Docker from source
 
 ```bash
-git clone https://github.com/morapet/devlog.git
-cd devlog
-make docker-up        # builds the image (includes drawio) and starts the container
-open http://localhost:8765
+git clone https://github.com/morapet/devlog.git && cd devlog
+make docker-up          # builds the image (includes drawio) and starts it
 ```
 
-Data persists in `./data/` (a SQLite WAL file). Stop with `make docker-down`.
+Data persists in `./data/`. Stop with `make docker-down`.
 
-### Option C — Local Python (with [uv](https://docs.astral.sh/uv/))
+### Local Python with [uv](https://docs.astral.sh/uv/)
 
 ```bash
-git clone https://github.com/morapet/devlog.git
-cd devlog
-make install          # uv sync
-make drawio           # download + install the drawio webapp (~120 MB, one-time)
-make dev              # uv run devlog
-open http://127.0.0.1:8765
+git clone https://github.com/morapet/devlog.git && cd devlog
+make install            # uv sync
+make drawio             # download the drawio webapp (~120 MB, one-time, optional)
+make dev                # uv run devlog  →  http://127.0.0.1:8765
 ```
 
-Data goes to `~/.local/share/devlog/devlog.db` (or `$XDG_DATA_HOME/devlog/` if set).
+Data lives at `~/.local/share/devlog/devlog.db` (or `$XDG_DATA_HOME/devlog/`).
 
-### Option D — Install as a CLI tool
+### Install as a CLI tool
 
 ```bash
 uv tool install git+https://github.com/morapet/devlog.git
-devlog                # starts the backend
-bash $(uv tool dir)/devlog/scripts/install-drawio.sh   # if you want drawings
+devlog                  # start the backend
+bash $(uv tool dir)/devlog/scripts/install-drawio.sh   # optional: drawings
 ```
 
-### Option E — Ubuntu / Debian, run on every login (systemd user service)
+### Ubuntu / Debian — run on every login (systemd user service)
 
 ```bash
-# From a repo checkout
-make install-linux      # backend service + desktop app, all-in-one
+make install-linux      # backend service + desktop app, all-in-one (from a checkout)
 
-# Or piecewise
-bash clients/linux-server/install.sh   # backend via pipx/uv + systemd --user
-bash clients/linux-app/install.sh      # GTK desktop app + autostart
-
-# Or from anywhere, no checkout
+# …or just the backend, from anywhere, no checkout:
 curl -sLf https://raw.githubusercontent.com/morapet/devlog/main/clients/linux-server/install.sh \
     | bash -s -- --from-github --linger
 ```
 
-The server script:
-- Installs the `devlog` package (via `uv tool` → `pipx` → `pip --user`, whichever exists; bootstraps `pipx` via apt if none).
-- Downloads the drawio webapp into the installed package (skip with `--no-drawio`).
-- Writes `~/.config/systemd/user/devlog.service` and runs `systemctl --user enable --now devlog`.
-- With `--linger`, runs `sudo loginctl enable-linger $USER` so the backend keeps running after logout.
+Installs the package, downloads drawio, writes `~/.config/systemd/user/devlog.service`, and (with `--linger`) keeps it running after logout. See [clients/linux-server/README.md](clients/linux-server/README.md).
 
-See [clients/linux-server/README.md](clients/linux-server/README.md) for status / upgrade / uninstall.
+</details>
 
-## Use from your iPhone (or any phone)
+<details>
+<summary><b>Use it from your phone</b> — LAN, Tailscale, or on-device</summary>
 
-The web UI is a mobile-friendly PWA — run the backend on any machine your phone can reach and it behaves like a native app. There is no iOS build to install; Safari is the client.
+The web UI is a mobile PWA; run the backend anywhere your phone can reach it and *Add to Home Screen* for a native-app feel. There's no iOS build to install — Safari is the client.
 
-### Same Wi-Fi (home / office LAN)
+- **Same Wi-Fi:** bind the backend to the network (`DEVLOG_HOST=0.0.0.0 make dev`; Docker already does), find the machine's IP (`ipconfig getifaddr en0` / `hostname -I`), and open `http://<ip>:8765`.
+- **Anywhere — [Tailscale](https://tailscale.com):** install it on both devices, then `http://<machine-name>:8765`. For HTTPS (needed for the offline service worker): `tailscale serve --bg 8765`.
+- **No computer at all:** run the backend *on* the iPhone inside [iSH](https://ish.app) — see [clients/ios/README.md](clients/ios/README.md).
 
-1. Make the server reachable from the network:
-   - **Docker** already binds `0.0.0.0` — nothing to do.
-   - **Local Python**: `DEVLOG_HOST=0.0.0.0 make dev` (the default bind is `127.0.0.1`, which the phone can't reach).
-2. Find the machine's LAN IP: `ipconfig getifaddr en0` (macOS) or `hostname -I` (Linux).
-3. On the iPhone, open `http://<that-ip>:8765` in Safari.
-4. **Add to Home Screen**: tap Share → *Add to Home Screen*. Devlog launches full-screen with its own icon, indistinguishable from a native app.
+</details>
 
-### Away from home — Tailscale (recommended)
+<details>
+<summary><b>Host it on the internet</b> — HTTPS + login</summary>
 
-Install [Tailscale](https://tailscale.com) on the server machine and the iPhone (App Store, free for personal use). The phone can then reach the server from anywhere:
+Devlog ships built-in auth: loopback is trusted, remote devices need a shared secret (`DEVLOG_AUTH_TOKEN`, or auto-generated to `<data_dir>/auth.token` — print with `devlog --print-token`). `DEVLOG_AUTH=always` requires it everywhere; `DEVLOG_AUTH=off` disables it (never do that on an open port). The web UI prompts once and keeps a 30-day cookie; API clients send `Authorization: Bearer <token>`. Ready-made setups, all serving the PWA with offline support:
 
-```
-http://<machine-name>:8765        # via MagicDNS
-```
+- [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports; optional Cloudflare Access on top.
+- [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**, automatic Let's Encrypt certs.
+- [deploy/pythonanywhere/](deploy/pythonanywhere/README.md) — **PythonAnywhere**, free tier, no server admin.
+- [deploy/cloud-run/](deploy/cloud-run/README.md) — **Google Cloud Run**, scale-to-zero; SQLite persisted via Litestream.
 
-For HTTPS (nicer, and required for the offline service worker — plain `http://` on a LAN IP is not a secure context):
+</details>
 
-```bash
-tailscale serve --bg 8765
-# → https://<machine-name>.<tailnet>.ts.net
-```
-
-### No computer at all — run it *on* the iPhone
-
-The backend is small enough to run on the phone itself inside [iSH](https://ish.app) (free, App Store); Safari talks to it over `localhost`. See [clients/ios/README.md](clients/ios/README.md) — install is four commands, nothing is compiled on-device.
-
-## Hosting it on the internet (HTTPS + login)
-
-Devlog ships built-in auth for remote access: your own machine (loopback) is trusted, but requests from other devices need a shared secret. The secret comes from **`DEVLOG_AUTH_TOKEN`**, or is auto-generated into `<data_dir>/auth.token` — print it with `devlog --print-token`. Set **`DEVLOG_AUTH=always`** to require the secret even on loopback, or **`DEVLOG_AUTH=off`** to disable auth entirely. The web UI prompts for the token on first remote access and keeps a 30-day session cookie; API clients send `Authorization: Bearer <token>`. With HTTPS in front, hosting publicly is reasonable. Two ready-made setups, both serving the PWA from anywhere with full offline-shell support:
-
-- [deploy/cloudflare/](deploy/cloudflare/README.md) — **Cloudflare Tunnel**, free, zero open ports: runs on any always-on machine at home; optional Cloudflare Access (Google login / email PIN) at the edge on top of the built-in shared secret.
-- [deploy/vps-caddy/](deploy/vps-caddy/README.md) — **VPS + Caddy**: ~€4/mo box, automatic Let's Encrypt certificates, built-in shared secret for auth.
-- [deploy/pythonanywhere/](deploy/pythonanywhere/README.md) — **PythonAnywhere**: free tier works (HTTPS at `you.pythonanywhere.com`), no server admin at all; deploys via a small WSGI bridge.
-- [deploy/cloud-run/](deploy/cloud-run/README.md) — **Google Cloud Run**: free `*.run.app` HTTPS URL, scale-to-zero; SQLite persists via Litestream streaming to a GCS bucket (single instance only).
-
-> Never expose port 8765 directly with `DEVLOG_AUTH=off` — an open devlog is writable by anyone. Keep the shared secret (required for remote access by default) and TLS in front (the cookie and token travel in requests).
-
-## Desktop app (optional)
-
-### macOS — native SwiftUI
-
-```bash
-make mac
-# or:
-cd clients/mac-app && ./build.sh && open .build/Devlog.app
-```
-
-Requires Swift / CommandLineTools. A native window hosts the full web UI in a WKWebView (with native save/open panels and Cmd+F find), and can manage its own backend. `make mac-dmg` builds a drag-to-Applications installer; `make mac-install` copies it into `/Applications`.
-
-### Linux — GNOME / Ubuntu (GTK3 + WebKit2GTK)
-
-```bash
-make app-linux
-# or:
-bash clients/linux-app/install.sh
-```
-
-A GTK desktop window wrapping the same web UI. The installer apt-installs the PyGObject / WebKit2GTK dependencies, drops a launcher, and enables autostart. See [clients/linux-app/README.md](clients/linux-app/README.md).
+---
 
 ## MCP server
 
-Exposes the HTTP API as 18 MCP tools for use from Claude Desktop / Claude Code.
-
-Add to your client config (e.g. `~/.claude.json` or `claude_desktop_config.json`):
+Exposes the HTTP API as 18 MCP tools for Claude Desktop / Claude Code. Add to your client config (e.g. `~/.claude.json`):
 
 ```json
 {
@@ -195,68 +164,61 @@ Add to your client config (e.g. `~/.claude.json` or `claude_desktop_config.json`
 }
 ```
 
-Override the backend URL with `DEVLOG_BASE_URL`. See [src/devlog/mcp_server.py](src/devlog/mcp_server.py) for the full tool list.
-
-## Make targets
-
-```
-make help               # list every target
-make install            # install python deps via uv
-make drawio             # download drawio webapp
-make dev                # run the backend
-make mac                # build and launch the macOS app
-make mcp                # run devlog-mcp (stdio)
-make docker-build       # docker compose build
-make docker-up          # docker compose up -d
-make docker-down        # docker compose down
-make docker-logs        # follow container logs
-make clean              # remove build artifacts (keeps data + db)
-```
+Override the backend URL with `DEVLOG_BASE_URL`. Full tool list: [src/devlog/mcp_server.py](src/devlog/mcp_server.py).
 
 ## Configuration
 
 | Env var | Default | Meaning |
 |---|---|---|
-| `DEVLOG_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker) |
+| `DEVLOG_HOST` | `127.0.0.1` | Bind address (`0.0.0.0` in Docker / to reach from other devices) |
 | `DEVLOG_PORT` | `8765` | Bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | Where the SQLite file lives |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | Used by `devlog-mcp` to reach the backend |
-| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback and requires the token remotely; `always` requires it everywhere; `off` disables auth |
-| `DEVLOG_AUTH_TOKEN` | *(auto-generated to `auth.token`)* | Shared secret for remote access; print it with `devlog --print-token`. Read by `devlog-mcp` too |
+| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback, requires the token remotely; `always` everywhere; `off` disables |
+| `DEVLOG_AUTH_TOKEN` | *(auto-generated)* | Shared secret for remote access; `devlog --print-token` |
 
-## Project layout
+<details>
+<summary>Make targets &amp; project layout</summary>
 
 ```
-.
-├── src/devlog/           # FastAPI app + web assets
-│   ├── api/              # routers: projects, items, sessions, attachments, search, stats, settings
-│   ├── web/              # index.html, app.js, style.css, vendor/drawio/ (ignored)
-│   ├── db.py             # schema + thread-local connections + migrations
-│   ├── autostop.py       # background loop pausing 'doing' tasks at end of workday
-│   ├── stats.py          # raw per-day session time math
-│   └── mcp_server.py     # FastMCP wrapper exposing 18 tools
-├── clients/mac-app/      # SwiftUI native app (Swift Package Manager)
-├── scripts/              # helpers (install-drawio.sh)
-├── Dockerfile            # python:3.13-slim base, uv, optional drawio install
-├── docker-compose.yml    # `make docker-up`
-├── Makefile              # convenience targets
-└── pyproject.toml        # uv-managed; entry points: devlog, devlog-mcp
+make help          # list every target
+make install       # python deps via uv
+make drawio        # download drawio webapp
+make dev           # run the backend
+make mac           # build + launch the macOS app
+make mac-install   # build + install Devlog.app into /Applications
+make app-linux     # install the Linux desktop app
+make mcp           # run devlog-mcp (stdio)
+make docker-up     # docker compose up -d   (docker-down / docker-logs / docker-build)
+make clean         # remove build artifacts (keeps data + db)
 ```
+
+```
+src/devlog/          FastAPI app + web assets
+  api/               routers: projects, items, sessions, attachments, search, stats, settings
+  web/               index.html, app.js, style.css, vendor/drawio/ (ignored)
+  db.py              schema + thread-local connections + migrations
+  mcp_server.py      FastMCP wrapper (18 tools)
+clients/mac-app/     SwiftUI native app (WKWebView)
+clients/linux-app/   GTK3 + WebKit2GTK app
+deploy/              cloudflare · vps-caddy · pythonanywhere · cloud-run
+Dockerfile · docker-compose.yml · Makefile · pyproject.toml
+```
+
+</details>
 
 ## Stack
 
-- **Backend**: FastAPI · SQLite (WAL + FTS5) · httpx · selectolax
-- **Web UI**: vanilla JS · Tailwind via CDN · markdown-it + custom plugins · highlight.js · Mermaid · drawio (vendored)
-- **macOS app**: SwiftUI · WKWebView · async/await URLSession client
-- **MCP**: `mcp` Python SDK (FastMCP, stdio transport)
+- **Backend** — FastAPI · SQLite (WAL + FTS5) · httpx · selectolax
+- **Web UI** — vanilla JS · Tailwind (CDN) · markdown-it (+ custom plugins) · highlight.js · Mermaid · drawio
+- **macOS** — SwiftUI · WKWebView · async/await URLSession · **Linux** — GTK3 · WebKit2GTK
+- **MCP** — `mcp` Python SDK (FastMCP, stdio)
 
 ## Documentation
 
-Three layers, each at a different scope:
-
-- [ARCHITECTURE.md](ARCHITECTURE.md) — big picture: system diagram, process model, rendering pipeline, what each client does, what's new recently.
-- [AGENTS.md](AGENTS.md) — operating guide for LLMs: how to connect via MCP, common workflows mapped to tool calls, the drawio recipe with a Python helper.
-- [SPECIFICATION.md](SPECIFICATION.md) — exhaustive contract suitable for full reimplementation. Domain model, every endpoint, every invariant.
+- [ARCHITECTURE.md](ARCHITECTURE.md) — system diagram, process model, rendering pipeline, what each client does.
+- [AGENTS.md](AGENTS.md) — operating guide for LLMs: MCP connection, workflows mapped to tool calls, the drawio recipe.
+- [SPECIFICATION.md](SPECIFICATION.md) — exhaustive contract: domain model, every endpoint, every invariant.
 
 ## License
 
