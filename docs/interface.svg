@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 726" font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" role="img" aria-label="Devlog interface: projects sidebar, item list, and a markdown detail pane">
+  <defs>
+    <filter id="shadow" x="-4%" y="-4%" width="108%" height="112%">
+      <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#0f172a" flood-opacity="0.10"/>
+    </filter>
+    <clipPath id="win"><rect x="12" y="12" width="1176" height="702" rx="12"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="726" fill="#eef2f6"/>
+
+  <!-- window -->
+  <g filter="url(#shadow)">
+    <rect x="12" y="12" width="1176" height="702" rx="12" fill="#ffffff" stroke="#e2e8f0"/>
+  </g>
+
+  <g clip-path="url(#win)">
+    <!-- ===== header ===== -->
+    <rect x="12" y="12" width="1176" height="48" fill="#ffffff"/>
+    <text x="34" y="42" font-size="17" font-weight="700" fill="#0f172a" letter-spacing="-0.3">devlog</text>
+    <text x="104" y="42" font-size="13" fill="#64748b">· Devlog (current)</text>
+    <!-- header buttons -->
+    <g font-size="11.5" fill="#475569">
+      <rect x="852" y="24" width="66" height="24" rx="6" fill="#fff" stroke="#cbd5e1"/><text x="864" y="40">👁 Focus</text>
+      <rect x="924" y="24" width="66" height="24" rx="6" fill="#fff" stroke="#cbd5e1"/><text x="936" y="40">🔗 Share</text>
+      <rect x="996" y="24" width="74" height="24" rx="6" fill="#fff" stroke="#cbd5e1"/><text x="1008" y="40">History ▾</text>
+      <rect x="1076" y="24" width="62" height="24" rx="6" fill="#fff" stroke="#cbd5e1"/><text x="1088" y="40">⇅ Data</text>
+    </g>
+    <line x1="12" y1="60" x2="1188" y2="60" stroke="#e2e8f0"/>
+
+    <!-- ===== sidebar ===== -->
+    <rect x="12" y="60" width="196" height="654" fill="#ffffff"/>
+    <rect x="26" y="76" width="168" height="34" rx="8" fill="#0f172a"/>
+    <text x="110" y="98" font-size="13" font-weight="600" fill="#ffffff" text-anchor="middle">+ New</text>
+    <text x="28" y="136" font-size="10.5" font-weight="700" letter-spacing="0.8" fill="#94a3b8">PROJECTS</text>
+    <!-- project rows -->
+    <g font-size="13">
+      <rect x="22" y="148" width="176" height="30" rx="6" fill="#0f172a"/>
+      <circle cx="38" cy="163" r="4" fill="#22c55e"/><text x="50" y="167" fill="#ffffff">Devlog</text>
+      <circle cx="38" cy="197" r="4" fill="#3b82f6"/><text x="50" y="201" fill="#334155">Home Lab</text>
+      <circle cx="38" cy="231" r="4" fill="#f59e0b"/><text x="50" y="235" fill="#334155">Website</text>
+      <circle cx="38" cy="265" r="4" fill="#a855f7"/><text x="50" y="269" fill="#334155">Ideas</text>
+    </g>
+    <line x1="208" y1="60" x2="208" y2="714" stroke="#e2e8f0"/>
+
+    <!-- ===== list pane ===== -->
+    <rect x="208" y="60" width="286" height="654" fill="#ffffff"/>
+    <!-- tabs -->
+    <g font-size="12.5">
+      <rect x="222" y="74" width="56" height="26" rx="6" fill="#0f172a"/><text x="250" y="91" fill="#fff" text-anchor="middle">Tasks</text>
+      <text x="300" y="91" fill="#64748b">Notes</text>
+      <text x="352" y="91" fill="#64748b">Links</text>
+    </g>
+    <line x1="208" y1="112" x2="494" y2="112" stroke="#e2e8f0"/>
+
+    <!-- list rows -->
+    <g font-size="13">
+      <!-- selected row -->
+      <rect x="208" y="120" width="286" height="66" fill="#eff6ff"/>
+      <rect x="208" y="120" width="3" height="66" fill="#2563eb"/>
+      <text x="228" y="146" font-weight="600" fill="#0f172a">Markdown TOC + auto-numbering</text>
+      <g font-size="10.5">
+        <rect x="228" y="156" width="52" height="18" rx="9" fill="#fef3c7"/><text x="238" y="169" fill="#92400e">doing</text>
+        <rect x="288" y="156" width="44" height="18" rx="9" fill="#fee2e2"/><text x="298" y="169" fill="#b91c1c">high</text>
+        <text x="344" y="169" fill="#94a3b8">· 2h 40m</text>
+      </g>
+
+      <text x="228" y="214" font-weight="500" fill="#334155">Resizable editor panes</text>
+      <g font-size="10.5">
+        <rect x="228" y="224" width="52" height="18" rx="9" fill="#dbeafe"/><text x="238" y="237" fill="#1d4ed8">today</text>
+        <text x="292" y="237" fill="#94a3b8">· #131</text>
+      </g>
+
+      <text x="228" y="282" font-weight="500" fill="#334155">Find-in-note scroll fix</text>
+      <g font-size="10.5">
+        <rect x="228" y="292" width="48" height="18" rx="9" fill="#f1f5f9"/><text x="238" y="305" fill="#475569">todo</text>
+      </g>
+
+      <text x="228" y="350" fill="#94a3b8" text-decoration="line-through">Move Focus/Share to header</text>
+      <g font-size="10.5">
+        <rect x="228" y="360" width="46" height="18" rx="9" fill="#dcfce7"/><text x="238" y="373" fill="#166534">done</text>
+      </g>
+    </g>
+    <line x1="494" y1="60" x2="494" y2="714" stroke="#e2e8f0"/>
+
+    <!-- ===== detail pane (rendered markdown) ===== -->
+    <rect x="494" y="60" width="694" height="654" fill="#ffffff"/>
+    <g font-size="11.5" fill="#64748b"><text x="520" y="86">#127 · note · Devlog</text></g>
+    <text x="520" y="118" font-size="22" font-weight="700" fill="#0f172a">Markdown reading view</text>
+
+    <!-- H1 with underline -->
+    <text x="520" y="164" font-size="21" font-weight="700" fill="#0f172a">Purpose and scope</text>
+    <line x1="520" y1="176" x2="1160" y2="176" stroke="#e2e8f0" stroke-width="2"/>
+    <g font-size="13.5" fill="#1e293b">
+      <text x="520" y="202">The note view should read like a document: clear heading levels,</text>
+      <text x="520" y="222">a table of contents, and optional numbering.</text>
+    </g>
+
+    <!-- blockquote -->
+    <rect x="520" y="238" width="3" height="52" fill="#cbd5e1"/>
+    <g font-size="13" fill="#475569" font-style="italic">
+      <text x="536" y="258">#### used to look like a normal sentence — now every heading</text>
+      <text x="536" y="278">level steps down in size, weight and colour.</text>
+    </g>
+
+    <!-- H2 with underline -->
+    <text x="520" y="326" font-size="17.5" font-weight="700" fill="#0f172a">What changed</text>
+    <line x1="520" y1="337" x2="1160" y2="337" stroke="#e9edf3"/>
+
+    <!-- bullet list -->
+    <g font-size="13.5" fill="#1e293b">
+      <circle cx="532" cy="360" r="2.5" fill="#475569"/><text x="546" y="365">Distinct styling across all six heading levels.</text>
+      <circle cx="532" cy="386" r="2.5" fill="#475569"/><text x="546" y="391">A toggleable table of contents, with numbering.</text>
+    </g>
+
+    <!-- H3 -->
+    <text x="520" y="432" font-size="15" font-weight="700" fill="#1e293b">Reading vs. editing</text>
+    <g font-size="13.5" fill="#1e293b">
+      <text x="520" y="458">Focus mode shows the article beside a resizable contents rail;</text>
+      <text x="520" y="478">edit mode splits rendered <tspan/></text>
+    </g>
+    <!-- inline code chip -->
+    <rect x="716" y="466" width="82" height="18" rx="3" fill="#f1f5f9"/>
+    <text x="724" y="479" font-size="12" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" fill="#0f172a">preview</text>
+    <text x="802" y="478" font-size="13.5" fill="#1e293b">and source.</text>
+
+    <!-- admonition note -->
+    <rect x="520" y="502" width="640" height="58" rx="6" fill="#eff6ff"/>
+    <rect x="520" y="502" width="4" height="58" fill="#3b82f6"/>
+    <text x="540" y="524" font-size="12.5" font-weight="700" fill="#1d4ed8">Note</text>
+    <g font-size="13" fill="#334155">
+      <text x="540" y="546">Preview sits on the left, the markdown editor on the right — drag the divider.</text>
+    </g>
+
+    <!-- code block (markdown sample showing devlog refs) -->
+    <rect x="520" y="578" width="640" height="104" rx="6" fill="#0f172a"/>
+    <g font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">
+      <text x="538" y="602" fill="#7dd3fc">## Design</text>
+      <text x="538" y="622" fill="#e2e8f0">- [x] Heading hierarchy</text>
+      <text x="538" y="642" fill="#e2e8f0">- [ ] Contents rail  <tspan fill="#94a3b8">see</tspan> #131 <tspan fill="#94a3b8">and</tspan> [[Editor split]]</text>
+      <text x="538" y="662" fill="#e2e8f0">![[drawing:4]]  <tspan fill="#94a3b8"># inline drawio diagram</tspan></text>
+    </g>
+  </g>
+</svg>
