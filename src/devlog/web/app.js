@@ -1198,8 +1198,16 @@ function renderEditor(it, bodyVal) {
       const headings = collectHeadings(article, { number: state.numberHeadings });
       layout.replaceChildren();
       layout.classList.toggle("no-toc", !state.tocVisible);
-      if (state.tocVisible) layout.append(buildTocNav(headings));
-      layout.append(article);
+      if (state.tocVisible) {
+        const nav = buildTocNav(headings);
+        const stored = Number(localStorage.getItem("tocWidth") || 0);
+        if (stored >= 140 && stored <= 560) nav.style.width = stored + "px";
+        const tocSplit = el("div", { class: "toc-splitter", title: "Drag to resize contents (double-click to reset)" });
+        wireTocSplitter(nav, tocSplit, { key: "tocWidth", def: 256, min: 140, max: 560 });
+        layout.append(nav, tocSplit, article);
+      } else {
+        layout.append(article);
+      }
       // Scroll-spy needs the article in the DOM; wire it after this frame.
       if (scrollSpy) { scrollSpy.disconnect(); scrollSpy = null; }
       if (state.tocVisible && headings.length) {
@@ -1622,6 +1630,39 @@ function attachTocScrollSpy(scrollRoot, article, nav) {
 
   article.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => obs.observe(h));
   return obs;
+}
+
+// Wire the divider between the TOC and the article. Unlike makeResizable() this
+// is called on every reading-view repaint, so it attaches only a mousedown
+// handler to the (fresh) splitter element and adds document-level move/up
+// listeners just for the duration of a drag — nothing accumulates across
+// repaints. Resizes the TOC (the pane to its left); width persists per `key`.
+function wireTocSplitter(pane, splitter, { key, def, min, max }) {
+  let startX = 0, startW = 0;
+  const onMove = (e) => {
+    const w = Math.max(min, Math.min(max, startW + (e.clientX - startX)));
+    pane.style.width = w + "px";
+  };
+  const onUp = () => {
+    document.removeEventListener("mousemove", onMove);
+    document.removeEventListener("mouseup", onUp);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    try { localStorage.setItem(key, String(parseInt(pane.style.width, 10))); } catch {}
+  };
+  splitter.addEventListener("mousedown", (e) => {
+    startX = e.clientX;
+    startW = pane.getBoundingClientRect().width;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    e.preventDefault();
+  });
+  splitter.addEventListener("dblclick", () => {
+    pane.style.width = def + "px";
+    try { localStorage.setItem(key, String(def)); } catch {}
+  });
 }
 
 let _mermaidCounter = 0;
