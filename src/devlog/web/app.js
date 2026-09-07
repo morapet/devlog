@@ -1266,10 +1266,10 @@ function renderEditor(it, bodyVal) {
     return outer;
   }
 
-  const wrap = el("div", { class: "edit-split min-h-[300px]" });
+  const wrap = el("div", { class: "edit-split" });
 
   const ta = el("textarea", {
-    class: "edit-editor w-full h-full min-h-[300px] font-mono text-sm border border-slate-200 rounded p-3 focus:outline-none focus:ring-2 focus:ring-blue-100",
+    class: "edit-editor w-full font-mono text-sm border border-slate-200 rounded p-3 focus:outline-none focus:ring-2 focus:ring-blue-100",
     placeholder: it.kind === "link" ? "Annotation… (markdown)" : "Body… (markdown, supports #42, [[title]], ![[drawing:N]])",
     oninput: (e) => { setDraftQuiet(it.id, "body", e.target.value); updatePreview(e.target.value); },
     spellcheck: "false",
