@@ -35,16 +35,33 @@ struct MainWindow: View {
     }
 }
 
-/// WKWebView that intercepts Cmd+F to open the web UI's in-note find bar. This
-/// app is an accessory (agent) app with no visible menu bar, so a menu item /
-/// key-equivalent is unreliable; performKeyEquivalent fires as long as the web
-/// view is in the key window's view tree, whatever has focus.
+/// WKWebView that handles the standard editing shortcuts itself. This app's
+/// main-menu wiring for Cmd+C/V/X/A/Z is unreliable for the web view (the menu
+/// isn't consistently in the key window's responder path), so text selected in
+/// the rendered view couldn't be copied and the editor couldn't be pasted into.
+/// performKeyEquivalent fires as long as the web view is in the key window's
+/// view tree, so we route each shortcut straight to the standard selector via
+/// the responder chain — which WKWebView's content view implements — instead of
+/// relying on a menu item's key equivalent. Cmd+F opens the web UI's find bar.
 final class FindableWebView: WKWebView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if mods == .command, event.charactersIgnoringModifiers?.lowercased() == "f" {
-            evaluateJavaScript("window.openFindBar && openFindBar()")
-            return true
+        let key = event.charactersIgnoringModifiers?.lowercased()
+
+        if mods == .command, let key {
+            switch key {
+            case "f":
+                evaluateJavaScript("window.openFindBar && openFindBar()")
+                return true
+            case "c": if NSApp.sendAction(#selector(NSText.copy(_:)), to: nil, from: self) { return true }
+            case "v": if NSApp.sendAction(#selector(NSText.paste(_:)), to: nil, from: self) { return true }
+            case "x": if NSApp.sendAction(#selector(NSText.cut(_:)), to: nil, from: self) { return true }
+            case "a": if NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: self) { return true }
+            case "z": if NSApp.sendAction(Selector(("undo:")), to: nil, from: self) { return true }
+            default: break
+            }
+        } else if mods == [.command, .shift], key == "z" {
+            if NSApp.sendAction(Selector(("redo:")), to: nil, from: self) { return true }
         }
         return super.performKeyEquivalent(with: event)
     }
