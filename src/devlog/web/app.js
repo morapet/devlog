@@ -1192,7 +1192,7 @@ function renderEditor(it, bodyVal) {
         const stored = Number(localStorage.getItem("tocWidth") || 0);
         if (stored >= 140 && stored <= 560) nav.style.width = stored + "px";
         const tocSplit = el("div", { class: "toc-splitter", title: "Drag to resize contents (double-click to reset)" });
-        wireTocSplitter(nav, tocSplit, { key: "tocWidth", def: 256, min: 140, max: 560 });
+        wirePaneSplitter(nav, tocSplit, { key: "tocWidth", def: 256, min: 140, max: 560 });
         layout.append(nav, tocSplit, article);
       } else {
         layout.append(article);
@@ -1266,10 +1266,10 @@ function renderEditor(it, bodyVal) {
     return outer;
   }
 
-  const wrap = el("div", { class: "grid grid-cols-1 md:grid-cols-2 gap-4 min-h-[300px]" });
+  const wrap = el("div", { class: "edit-split min-h-[300px]" });
 
   const ta = el("textarea", {
-    class: "w-full h-full min-h-[300px] font-mono text-sm border border-slate-200 rounded p-3 focus:outline-none focus:ring-2 focus:ring-blue-100",
+    class: "edit-editor w-full h-full min-h-[300px] font-mono text-sm border border-slate-200 rounded p-3 focus:outline-none focus:ring-2 focus:ring-blue-100",
     placeholder: it.kind === "link" ? "Annotation… (markdown)" : "Body… (markdown, supports #42, [[title]], ![[drawing:N]])",
     oninput: (e) => { setDraftQuiet(it.id, "body", e.target.value); updatePreview(e.target.value); },
     spellcheck: "false",
@@ -1313,7 +1313,7 @@ function renderEditor(it, bodyVal) {
     }, "✎ Drawing"),
   );
 
-  const preview = el("div", { class: "prose-body border border-slate-100 rounded p-3 bg-slate-50 overflow-auto", id: "md-preview" });
+  const preview = el("div", { class: "edit-preview prose-body border border-slate-100 rounded p-3 bg-slate-50 overflow-auto", id: "md-preview" });
   renderMarkdownInto(preview, bodyVal);
 
   // Click handler: navigate on #N and [[Title]] anchors, edit on drawings.
@@ -1353,7 +1353,12 @@ function renderEditor(it, bodyVal) {
     }
   })();
 
-  wrap.append(ta, preview);
+  // Rendered preview on the LEFT, editor on the RIGHT, with a draggable divider.
+  const paneSplit = el("div", { class: "edit-pane-splitter", title: "Drag to resize (double-click to reset)" });
+  const stored = Number(localStorage.getItem("editPreviewWidth") || 0);
+  if (stored >= 240 && stored <= 1600) preview.style.width = stored + "px";
+  wirePaneSplitter(preview, paneSplit, { key: "editPreviewWidth", def: null, min: 240, max: 1600 });
+  wrap.append(preview, paneSplit, ta);
   outer.append(toolbar, wrap);
   return outer;
 
@@ -1666,12 +1671,14 @@ function attachTocScrollSpy(scrollRoot, article, nav) {
   return obs;
 }
 
-// Wire the divider between the TOC and the article. Unlike makeResizable() this
-// is called on every reading-view repaint, so it attaches only a mousedown
-// handler to the (fresh) splitter element and adds document-level move/up
-// listeners just for the duration of a drag — nothing accumulates across
-// repaints. Resizes the TOC (the pane to its left); width persists per `key`.
-function wireTocSplitter(pane, splitter, { key, def, min, max }) {
+// Wire a draggable divider that resizes the pane to its LEFT (used for the TOC
+// rail and the edit-mode preview). Unlike makeResizable() this is called on
+// every repaint, so it attaches only a mousedown handler to the (fresh)
+// splitter element and adds document-level move/up listeners just for the
+// duration of a drag — nothing accumulates across repaints. Width persists per
+// `key`. Double-click resets: to `def`px when `def` is a number, or (when `def`
+// is null) clears the inline width so the CSS default applies.
+function wirePaneSplitter(pane, splitter, { key, def, min, max }) {
   let startX = 0, startW = 0;
   const onMove = (e) => {
     const w = Math.max(min, Math.min(max, startW + (e.clientX - startX)));
@@ -1694,8 +1701,9 @@ function wireTocSplitter(pane, splitter, { key, def, min, max }) {
     e.preventDefault();
   });
   splitter.addEventListener("dblclick", () => {
-    pane.style.width = def + "px";
-    try { localStorage.setItem(key, String(def)); } catch {}
+    if (def == null) pane.style.removeProperty("width");
+    else pane.style.width = def + "px";
+    try { localStorage.removeItem(key); } catch {}
   });
 }
 
