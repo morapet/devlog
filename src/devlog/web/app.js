@@ -1588,7 +1588,7 @@ function buildTocNav(headings) {
       onclick: (e) => {
         e.preventDefault();
         const target = document.getElementById(h.id);
-        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (target) scrollHeadingIntoView(target);
       },
     });
     if (state.numberHeadings) a.append(el("span", { class: "md-toc-num" }, h.number));
@@ -1596,6 +1596,51 @@ function buildTocNav(headings) {
     nav.append(a);
   }
   return nav;
+}
+
+// Nearest scrollable ancestor of `el` (the element that actually scrolls), or
+// null if none — used to scroll a heading to the top on TOC clicks.
+function getScrollParent(el) {
+  let p = el.parentElement;
+  while (p) {
+    const oy = getComputedStyle(p).overflowY;
+    if ((oy === "auto" || oy === "scroll") && p.scrollHeight > p.clientHeight) return p;
+    p = p.parentElement;
+  }
+  return null;
+}
+
+// Animate `el.scrollTop` to `to` ourselves. We do NOT use scrollIntoView({
+// behavior:"smooth" }) or scrollTo({behavior:"smooth"}): smooth programmatic
+// scrolling of a nested scroll container is unreliable in WebKit (Safari /
+// WKWebView / WebKit2GTK), which is why TOC clicks appeared to do nothing.
+// Assigning scrollTop works everywhere, so we tween it by hand — and guarantee
+// the landing with a timer fallback in case rAF is throttled (e.g. hidden tab).
+function smoothScrollTop(el, to, duration = 300) {
+  const start = el.scrollTop;
+  const diff = to - start;
+  if (Math.abs(diff) < 2 || duration <= 0) { el.scrollTop = to; return; }
+  const t0 = performance.now();
+  const ease = (t) => 1 - Math.pow(1 - t, 3); // easeOutCubic
+  let done = false;
+  (function step(now) {
+    if (done) return;
+    const p = Math.min(1, (now - t0) / duration);
+    el.scrollTop = start + diff * ease(p);
+    if (p < 1) requestAnimationFrame(step);
+    else done = true;
+  })(t0);
+  // rAF doesn't fire in a hidden/background tab; ensure we still land there.
+  setTimeout(() => { if (!done) { el.scrollTop = to; done = true; } }, duration + 80);
+}
+
+// Scroll a heading to the top of its scroll container (with a small gap).
+function scrollHeadingIntoView(target) {
+  const scroller = getScrollParent(target);
+  if (!scroller) { target.scrollIntoView(); return; }
+  const to = target.getBoundingClientRect().top
+    - scroller.getBoundingClientRect().top + scroller.scrollTop - 8;
+  smoothScrollTop(scroller, Math.max(0, to));
 }
 
 // Highlight the TOC entry for the heading currently nearest the top of the
