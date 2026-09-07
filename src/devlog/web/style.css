@@ -240,15 +240,24 @@ body[data-focus="1"] #detail {
 /* ==========================================================================
    Edit mode: rendered preview (left) | draggable divider | editor (right).
    ========================================================================== */
-.edit-split { display: flex; align-items: stretch; gap: 0; }
+.edit-split {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  /* Fill most of the window height so the panes aren't a small strip. The
+     subtracted space is the title/meta/tags/toolbar above and actions below. */
+  min-height: max(360px, calc(100vh - 20rem));
+}
 .edit-split .edit-preview {
   flex: 0 0 auto;
   width: 50%;              /* default; overridden by the drag-resizer */
   min-width: 0;
+  overflow: auto;
 }
 .edit-split .edit-editor {
   flex: 1 1 0;
   min-width: 0;
+  resize: none;
 }
 /* Full-height draggable divider; transparent borders widen the grab area. */
 .edit-pane-splitter {
@@ -267,8 +276,9 @@ body[data-focus="1"] #detail {
 
 /* Stack the two panes on narrow widths; drop the vertical divider. */
 @media (max-width: 767px) {
-  .edit-split { flex-direction: column; gap: 0.75rem; }
-  .edit-split .edit-preview { width: 100% !important; }
+  .edit-split { flex-direction: column; gap: 0.75rem; min-height: 0; }
+  .edit-split .edit-preview { width: 100% !important; min-height: 260px; }
+  .edit-split .edit-editor { min-height: 320px; }
   .edit-pane-splitter { display: none; }
 }
 
