@@ -1628,13 +1628,24 @@ function smoothScrollTop(el, to, duration = 300) {
   setTimeout(() => { if (!done) { el.scrollTop = to; done = true; } }, duration + 80);
 }
 
-// Scroll a heading to the top of its scroll container (with a small gap).
-function scrollHeadingIntoView(target) {
+// Scroll `target` into view within its scroll container, animating scrollTop
+// ourselves (see smoothScrollTop). `block` is "start" (align to top, with a
+// small gap) or "center". Used by both the TOC and the find-in-note bar, which
+// otherwise hit the same WebKit smooth-scrollIntoView no-op.
+function scrollElementIntoView(target, { block = "start" } = {}) {
   const scroller = getScrollParent(target);
   if (!scroller) { target.scrollIntoView(); return; }
-  const to = target.getBoundingClientRect().top
-    - scroller.getBoundingClientRect().top + scroller.scrollTop - 8;
+  const rel = target.getBoundingClientRect().top
+    - scroller.getBoundingClientRect().top + scroller.scrollTop;
+  const to = block === "center"
+    ? rel - (scroller.clientHeight / 2) + (target.getBoundingClientRect().height / 2)
+    : rel - 8;
   smoothScrollTop(scroller, Math.max(0, to));
+}
+
+// Scroll a heading to the top of its scroll container (with a small gap).
+function scrollHeadingIntoView(target) {
+  scrollElementIntoView(target, { block: "start" });
 }
 
 // Highlight the TOC entry for the heading currently nearest the top of the
@@ -2866,7 +2877,7 @@ function findGo(i) {
   find.active = (i + find.hits.length) % find.hits.length;
   const m = find.hits[find.active];
   m.classList.add("active");
-  m.scrollIntoView({ block: "center", behavior: "smooth" });
+  scrollElementIntoView(m, { block: "center" });
   findUpdateCount();
 }
 
