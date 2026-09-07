@@ -596,6 +596,7 @@ function renderDetail() {
   const d = $("#detail");
   d.replaceChildren();
   const it = state.selected;
+  renderHeaderItemActions();
   if (!it) {
     d.append(el("div", { class: "p-8 text-slate-400 text-sm" }, "Select an item."));
     return;
@@ -620,19 +621,7 @@ function renderDetail() {
       proj ? el("span", {}, "·") : null,
       proj ? el("span", {}, proj.name) : null,
       el("span", { class: "ml-auto" }, "updated " + fmtDate(it.updatedAt ?? it.updated_at)),
-      el("button", {
-        class: "ml-3 px-2 py-0.5 rounded border " +
-          (state.focusMode
-            ? "border-amber-300 bg-amber-100 text-amber-800"
-            : "border-slate-300 text-slate-600 hover:bg-slate-100"),
-        title: state.focusMode ? "Exit focus mode" : "Focus mode — read-only, hides editor",
-        onclick: toggleFocusMode,
-      }, state.focusMode ? "✏ Edit" : "👁 Focus"),
-      el("button", {
-        class: "ml-2 px-2 py-0.5 rounded border border-slate-300 text-slate-600 hover:bg-slate-100",
-        title: "Create a read-only share link (focus view) others on your network can open",
-        onclick: () => openShareModal(it),
-      }, "🔗 Share"),
+      // Focus / Share / History live in the top header (see renderHeaderItemActions).
     ),
     it.kind !== "link"
       ? (state.focusMode
@@ -1850,7 +1839,7 @@ function renderActions(it) {
     "data-status": _autosaveStatus.get(it.id) || "",
   }, autosaveLabel(it.id) || "Up to date"));
 
-  wrap.append(renderHistoryButton(it));
+  // History moved to the top header (see renderHeaderItemActions).
   wrap.append(el("div", { class: "ml-auto" }));
   wrap.append(el("button", {
     class: "px-3 py-1.5 text-sm text-red-600 hover:underline",
@@ -1860,14 +1849,6 @@ function renderActions(it) {
 }
 
 // ---------- history ----------
-function renderHistoryButton(it) {
-  const btn = el("button", {
-    class: "px-2 py-1 text-xs rounded border border-slate-300 hover:bg-white text-slate-700",
-    onclick: () => openHistory(it, btn),
-  }, "History ▾");
-  return btn;
-}
-
 async function openHistory(it, anchorBtn) {
   let versions = [];
   try {
@@ -2086,6 +2067,7 @@ function clearSel() {
   // Focus mode is only "on" while an item is being viewed; clear the body
   // attribute so the sidebar reappears as soon as the user navigates away.
   if (typeof _applyFocusBodyAttr === "function") _applyFocusBodyAttr();
+  if (typeof renderHeaderItemActions === "function") renderHeaderItemActions();
 }
 
 // (Header search and global "+ New" buttons removed — search lives inside Home, "+ New" lives in the sidebar.)
@@ -2661,6 +2643,31 @@ function openDataModal() {
 }
 
 $("#data-menu") && $("#data-menu").addEventListener("click", openDataModal);
+
+// ---------- top-header per-item actions (Focus / Share / History) ----------
+// These live in the global header next to Data. They act on the currently
+// selected item and are hidden when nothing is open.
+$("#header-focus")   && $("#header-focus").addEventListener("click",   () => { if (state.selected) toggleFocusMode(); });
+$("#header-share")   && $("#header-share").addEventListener("click",   () => { if (state.selected) openShareModal(state.selected); });
+$("#header-history") && $("#header-history").addEventListener("click", () => { if (state.selected) openHistory(state.selected, $("#header-history")); });
+
+// Show/hide the header actions for the current selection and keep the Focus
+// button's label + active styling in sync with focus mode.
+function renderHeaderItemActions() {
+  const it = state.selected;
+  const focus = $("#header-focus"), share = $("#header-share"), history = $("#header-history");
+  const show = !!it;
+  for (const b of [focus, share, history]) if (b) b.hidden = !show;
+  if (focus) {
+    focus.textContent = state.focusMode ? "✏ Edit" : "👁 Focus";
+    focus.title = state.focusMode ? "Exit focus mode" : "Focus mode — read-only, hides editor";
+    const active = ["bg-amber-100", "border-amber-300", "text-amber-800"];
+    const idle = ["text-slate-700", "hover:bg-slate-100"];
+    focus.classList.toggle("border-slate-300", !state.focusMode);
+    active.forEach((c) => focus.classList.toggle(c, state.focusMode));
+    idle.forEach((c) => focus.classList.toggle(c, !state.focusMode));
+  }
+}
 
 // ---------- read-only share links ----------
 function openShareModal(it) {
