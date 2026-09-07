@@ -1,10 +1,47 @@
 /* Markdown body */
-.prose-body { line-height: 1.55; }
-.prose-body h1, .prose-body h2, .prose-body h3 { font-weight: 600; margin: 0.6em 0 0.3em; }
-.prose-body h1 { font-size: 1.3em; }
-.prose-body h2 { font-size: 1.15em; }
-.prose-body h3 { font-size: 1.05em; }
-.prose-body p { margin: 0.4em 0; }
+.prose-body { line-height: 1.6; color: #1e293b; }
+
+/* Heading hierarchy — each level is visually distinct so #### never reads as a
+   plain sentence. Tailwind's Preflight resets every heading to inherit size /
+   normal weight, so we must set all six explicitly (h4–h6 included). The scale
+   steps down in size and shifts colour/casing so depth is legible at a glance. */
+.prose-body h1, .prose-body h2, .prose-body h3,
+.prose-body h4, .prose-body h5, .prose-body h6 {
+  font-weight: 700;
+  line-height: 1.25;
+  color: #0f172a;
+  scroll-margin-top: 1rem;   /* so TOC anchor jumps aren't hidden under edges */
+}
+.prose-body h1 {
+  font-size: 1.6em; margin: 0.8em 0 0.45em;
+  padding-bottom: 0.25em; border-bottom: 2px solid #e2e8f0;
+}
+.prose-body h2 {
+  font-size: 1.32em; margin: 1.1em 0 0.4em;
+  padding-bottom: 0.2em; border-bottom: 1px solid #e9edf3;
+}
+.prose-body h3 { font-size: 1.15em; margin: 1em 0 0.35em; color: #1e293b; }
+.prose-body h4 {
+  font-size: 1.0em; margin: 0.9em 0 0.3em; color: #334155;
+}
+.prose-body h5 {
+  font-size: 0.86em; margin: 0.9em 0 0.3em; color: #475569;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.prose-body h6 {
+  font-size: 0.8em; margin: 0.9em 0 0.3em; font-weight: 600; color: #64748b;
+  text-transform: uppercase; letter-spacing: 0.08em;
+}
+/* The first heading of a note shouldn't push a big gap above itself. */
+.prose-body > :first-child { margin-top: 0; }
+
+/* Auto-numbering: a "1.2.3" prefix computed in JS and injected as a span. */
+.prose-body .md-h-num {
+  color: #94a3b8; font-weight: 600; margin-right: 0.5em;
+  font-variant-numeric: tabular-nums;
+}
+
+.prose-body p { margin: 0.5em 0; }
 .prose-body ul, .prose-body ol { padding-left: 1.4em; margin: 0.4em 0; }
 .prose-body code { background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 .prose-body pre { background: #0f172a; color: #e2e8f0; padding: 0.6em 0.8em; border-radius: 6px; overflow-x: auto; font-size: 0.85em; }
@@ -68,6 +105,114 @@ body[data-focus="1"] #splitter {
 body[data-focus="1"] #detail {
   flex: 1 1 100%;
   width: 100%;
+}
+
+/* ==========================================================================
+   Reading view: table of contents + article, side by side.
+   Rendered only in focus mode by renderEditor(). The TOC is a sticky left rail
+   that can be toggled off; when off, .focus-layout collapses to a single
+   centred column.
+   ========================================================================== */
+.focus-layout {
+  display: flex;
+  gap: 2.5rem;
+  align-items: flex-start;
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 1.5rem 2rem 4rem;
+}
+.focus-layout .focus-article {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 46rem;
+}
+/* When the TOC is hidden, keep the article centred rather than left-hugging. */
+.focus-layout.no-toc { justify-content: center; }
+
+.md-toc {
+  flex: 0 0 15rem;
+  width: 15rem;
+  position: sticky;
+  top: 1rem;
+  align-self: flex-start;
+  max-height: calc(100vh - 5rem);
+  overflow-y: auto;
+  font-size: 0.82rem;
+  padding-right: 0.5rem;
+  border-right: 1px solid #eef2f6;
+}
+.md-toc-title {
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  margin: 0 0 0.5rem;
+}
+.md-toc a {
+  display: block;
+  padding: 0.18rem 0.5rem;
+  margin: 0.05rem 0;
+  color: #475569;
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 3px 3px 0;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.md-toc a:hover { background: #f1f5f9; color: #0f172a; }
+.md-toc a.active {
+  color: #1d4ed8;
+  border-left-color: #2563eb;
+  background: #eff6ff;
+  font-weight: 600;
+}
+/* Indent by heading depth. */
+.md-toc a[data-lvl="1"] { padding-left: 0.5rem; font-weight: 600; }
+.md-toc a[data-lvl="2"] { padding-left: 1.1rem; }
+.md-toc a[data-lvl="3"] { padding-left: 1.9rem; }
+.md-toc a[data-lvl="4"] { padding-left: 2.7rem; color: #64748b; }
+.md-toc a[data-lvl="5"], .md-toc a[data-lvl="6"] { padding-left: 3.5rem; color: #64748b; }
+.md-toc .md-toc-num { color: #94a3b8; margin-right: 0.35em; font-variant-numeric: tabular-nums; }
+.md-toc-empty { color: #cbd5e1; font-style: italic; padding: 0.2rem 0.5rem; }
+
+/* Toggle bar above the reading view. */
+.reader-toolbar {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  max-width: 90rem;
+  margin: 0 auto;
+  padding: 0.75rem 2rem 0;
+}
+.reader-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.78rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.375rem;
+  color: #475569;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+.reader-toggle:hover { background: #f8fafc; }
+.reader-toggle.on {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+/* Stack the TOC above the article on narrow / mobile widths. */
+@media (max-width: 900px) {
+  .focus-layout { flex-direction: column; gap: 1rem; padding: 1rem; }
+  .md-toc {
+    position: static; width: 100%; flex-basis: auto; max-height: none;
+    border-right: 0; border-bottom: 1px solid #eef2f6; padding-bottom: 0.5rem;
+  }
+  .focus-layout .focus-article { max-width: 100%; }
 }
 
 /* ==========================================================================

@@ -124,6 +124,15 @@ const state = {
     try { return JSON.parse(localStorage.getItem("focusMode") || "false"); }
     catch { return false; }
   })(),
+  // Reading-view (focus mode) preferences.
+  tocVisible: (() => {
+    try { return JSON.parse(localStorage.getItem("tocVisible") || "true"); }
+    catch { return true; }
+  })(),
+  numberHeadings: (() => {
+    try { return JSON.parse(localStorage.getItem("numberHeadings") || "false"); }
+    catch { return false; }
+  })(),
   // List view controls
   sortBy: "status",       // 'status' | 'priority' | 'updated' | 'created' | 'title' | 'time_spent' | 'due'
   groupBy: "none",        // 'none' | 'status' | 'priority' | 'tag'
@@ -1156,17 +1165,41 @@ function _mdAdmonition(ta) {
 function renderEditor(it, bodyVal) {
   const outer = el("div", { class: "px-6 py-3" });
 
-  // ── Focus mode: render preview only, full width ──
+  // ── Focus mode: read-only reading view with an optional TOC rail ──
   if (state.focusMode) {
-    const ro = el("div", {
-      // Wide reading column: a generous max keeps long lines comfortable, but
-      // the preview gets the full window width minus the side padding now
-      // that the sidebar / list pane are hidden by body[data-focus] CSS.
-      class: "prose-body bg-white overflow-auto min-h-[300px] max-w-[110ch] mx-auto px-6 py-6",
+    outer.className = "";  // reading view manages its own padding/width
+
+    const article = el("div", {
+      class: "prose-body focus-article",
       id: "md-preview",
     });
-    renderMarkdownInto(ro, bodyVal);
-    ro.addEventListener("click", async (e) => {
+
+    // Renders the body, decorates headings (ids + optional numbering), and
+    // (re)builds the TOC rail. Called on first render and whenever #N titles
+    // resolve so the decoration stays consistent.
+    const layout = el("div", { class: "focus-layout" });
+    let scrollSpy = null;
+    function paint() {
+      renderMarkdownInto(article, (state.drafts[it.id] && state.drafts[it.id].body) ?? bodyVal);
+      const headings = collectHeadings(article, { number: state.numberHeadings });
+      layout.replaceChildren();
+      layout.classList.toggle("no-toc", !state.tocVisible);
+      if (state.tocVisible) layout.append(buildTocNav(headings));
+      layout.append(article);
+      // Scroll-spy needs the article in the DOM; wire it after this frame.
+      if (scrollSpy) { scrollSpy.disconnect(); scrollSpy = null; }
+      if (state.tocVisible && headings.length) {
+        requestAnimationFrame(() => {
+          const nav = layout.querySelector(".md-toc");
+          const root = document.getElementById("detail");
+          if (nav && document.body.contains(article)) {
+            scrollSpy = attachTocScrollSpy(root, article, nav);
+          }
+        });
+      }
+    }
+
+    article.addEventListener("click", async (e) => {
       const drawingImg = e.target.closest("[data-edit-drawing]");
       if (drawingImg) {
         // Focus mode: clicking a drawing opens a zoomed lightbox view
@@ -1190,14 +1223,35 @@ function renderEditor(it, bodyVal) {
         if (hit) selectItem(hit.id);
       }
     });
-    // Hydrate any #N title decorations.
+
+    // Toggle bar: Contents (TOC) and 1. Numbering. Both persist and re-paint.
+    const mkToggle = (label, key, title) => el("button", {
+      class: "reader-toggle" + (state[key] ? " on" : ""),
+      type: "button",
+      title,
+      onclick: (e) => {
+        state[key] = !state[key];
+        try { localStorage.setItem(key, JSON.stringify(state[key])); } catch {}
+        e.currentTarget.classList.toggle("on", state[key]);
+        paint();
+      },
+    }, label);
+    const toolbar = el("div", { class: "reader-toolbar" },
+      mkToggle("☰ Contents", "tocVisible", "Show / hide the table of contents"),
+      mkToggle("1. Numbering", "numberHeadings", "Number headings by their level (1, 1.1, 1.1.1…)"),
+    );
+
+    paint();
+
+    // Hydrate any #N title decorations, then repaint so titles + TOC agree.
     const ids = extractIdRefs(bodyVal);
     if (ids.length) {
       ensureTitlesFor(ids).then((changed) => {
-        if (changed && document.body.contains(ro)) renderMarkdownInto(ro, bodyVal);
+        if (changed && document.body.contains(article)) paint();
       });
     }
-    outer.append(ro);
+
+    outer.append(toolbar, layout);
     return outer;
   }
 
@@ -1433,6 +1487,127 @@ function renderMarkdown(text) {
   const div = document.createElement("div");
   renderMarkdownInto(div, text);
   return div.innerHTML;
+}
+
+// ---------- reading-view: table of contents + heading numbering ----------
+
+// Walk the headings of a rendered article, give each a stable id (markdown-it-
+// anchor only tags h2+), compute hierarchical "1.2.3" numbers, and — when
+// `number` is on — inject the number as a prefix span. Idempotent: re-running
+// strips any previously injected spans first. Returns the heading model
+// [{id, level, text, number}] in document order, for building the TOC.
+function collectHeadings(article, { number }) {
+  const hs = Array.from(article.querySelectorAll("h1, h2, h3, h4, h5, h6"));
+  if (!hs.length) return [];
+
+  // Normalise so the shallowest heading present counts as depth 0 — a note that
+  // starts at ## still numbers 1, 1.1, … instead of being padded from h1.
+  const minLevel = Math.min(...hs.map((h) => Number(h.tagName[1])));
+
+  const counters = [];
+  const usedIds = new Set();
+  const out = [];
+
+  for (const h of hs) {
+    // Strip a prior injected number so re-decoration doesn't stack them.
+    const old = h.querySelector(":scope > .md-h-num");
+    if (old) {
+      // also drop the trailing space node we inserted after it
+      if (old.nextSibling && old.nextSibling.nodeType === 3) old.nextSibling.remove();
+      old.remove();
+    }
+
+    const level = Number(h.tagName[1]);
+    const depth = level - minLevel; // 0-based
+    const text = h.textContent.trim();
+
+    // Ensure an id for anchor navigation (slug matching markdownItAnchor).
+    if (!h.id) {
+      const base = text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "") || "section";
+      let id = base, i = 2;
+      while (usedIds.has(id)) id = `${base}-${i++}`;
+      h.id = id;
+    }
+    usedIds.add(h.id);
+
+    // Hierarchical counter: bump this depth, clear anything deeper, and default
+    // any skipped intermediate level to 1 so a h2→h4 jump reads "1.1.1".
+    counters.length = depth + 1;
+    for (let d = 0; d < depth; d++) if (counters[d] == null) counters[d] = 1;
+    counters[depth] = (counters[depth] || 0) + 1;
+    const num = counters.join(".");
+
+    if (number) {
+      const space = document.createTextNode(" ");
+      h.insertBefore(space, h.firstChild);
+      h.insertBefore(el("span", { class: "md-h-num" }, num), space);
+    }
+
+    out.push({ id: h.id, level, text, number: num });
+  }
+  return out;
+}
+
+// Build the sticky TOC nav from a heading model. Clicks scroll the matching
+// heading into view within `article`'s scroll container.
+function buildTocNav(headings) {
+  const nav = el("nav", { class: "md-toc" });
+  nav.append(el("div", { class: "md-toc-title" }, "Contents"));
+  if (!headings.length) {
+    nav.append(el("div", { class: "md-toc-empty" }, "No headings"));
+    return nav;
+  }
+  const minLevel = Math.min(...headings.map((h) => h.level));
+  for (const h of headings) {
+    const a = el("a", {
+      href: "#" + h.id,
+      "data-lvl": String(Math.min(h.level - minLevel + 1, 6)),
+      "data-toc-id": h.id,
+      onclick: (e) => {
+        e.preventDefault();
+        const target = document.getElementById(h.id);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      },
+    });
+    if (state.numberHeadings) a.append(el("span", { class: "md-toc-num" }, h.number));
+    a.append(document.createTextNode(h.text));
+    nav.append(a);
+  }
+  return nav;
+}
+
+// Highlight the TOC entry for the heading currently nearest the top of the
+// scroll container. Returns the IntersectionObserver so callers can disconnect.
+function attachTocScrollSpy(scrollRoot, article, nav) {
+  const links = new Map();
+  nav.querySelectorAll("a[data-toc-id]").forEach((a) => links.set(a.dataset.tocId, a));
+  if (!links.size) return null;
+
+  const visible = new Set();
+  const setActive = () => {
+    let best = null, bestTop = Infinity;
+    for (const id of visible) {
+      const h = document.getElementById(id);
+      if (!h) continue;
+      const top = h.getBoundingClientRect().top;
+      if (top < bestTop) { bestTop = top; best = id; }
+    }
+    if (!best) return;
+    links.forEach((a, id) => a.classList.toggle("active", id === best));
+    const active = links.get(best);
+    if (active) active.scrollIntoView({ block: "nearest" });
+  };
+
+  const obs = new IntersectionObserver((entries) => {
+    for (const en of entries) {
+      if (en.isIntersecting) visible.add(en.target.id);
+      else visible.delete(en.target.id);
+    }
+    setActive();
+  }, { root: scrollRoot, rootMargin: "0px 0px -70% 0px", threshold: 0 });
+
+  article.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((h) => obs.observe(h));
+  return obs;
 }
 
 let _mermaidCounter = 0;
