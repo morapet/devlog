@@ -170,13 +170,14 @@ function showHomeOnly(show) {
   $("#splitter").classList.toggle("hidden", show);
 }
 
-// Restore saved list-pane width and wire up the drag-resizer.
-(function setupSplitter() {
-  const pane = $("#list-pane");
-  const splitter = $("#splitter");
+// Restore saved pane widths and wire up every vertical drag-resizer. Each
+// splitter resizes the pane immediately to its left; the width persists in
+// localStorage and a double-click restores the default. A `key` collision is
+// avoided by giving each splitter its own storage key.
+function makeResizable({ pane, splitter, key, def, min, max }) {
   if (!pane || !splitter) return;
-  const stored = Number(localStorage.getItem("listPaneWidth") || 0);
-  if (stored >= 200 && stored <= 800) pane.style.width = stored + "px";
+  const stored = Number(localStorage.getItem(key) || 0);
+  if (stored >= min && stored <= max) pane.style.width = stored + "px";
 
   let dragging = false;
   let startX = 0;
@@ -191,7 +192,7 @@ function showHomeOnly(show) {
   });
   window.addEventListener("mousemove", (e) => {
     if (!dragging) return;
-    const w = Math.max(180, Math.min(900, startW + (e.clientX - startX)));
+    const w = Math.max(min, Math.min(max, startW + (e.clientX - startX)));
     pane.style.width = w + "px";
   });
   window.addEventListener("mouseup", () => {
@@ -199,12 +200,25 @@ function showHomeOnly(show) {
     dragging = false;
     document.body.style.cursor = "";
     document.body.style.userSelect = "";
-    localStorage.setItem("listPaneWidth", String(parseInt(pane.style.width, 10)));
+    localStorage.setItem(key, String(parseInt(pane.style.width, 10)));
   });
-  // Double-click resets to default
+  // Double-click resets to default.
   splitter.addEventListener("dblclick", () => {
-    pane.style.width = "320px";
-    localStorage.setItem("listPaneWidth", "320");
+    pane.style.width = def + "px";
+    localStorage.setItem(key, String(def));
+  });
+}
+
+(function setupSplitters() {
+  // Sidebar | content.  Default matches the `w-56` (224px) Tailwind class.
+  makeResizable({
+    pane: $("#sidebar"), splitter: $("#sidebar-splitter"),
+    key: "sidebarWidth", def: 224, min: 160, max: 500,
+  });
+  // List | detail.
+  makeResizable({
+    pane: $("#list-pane"), splitter: $("#splitter"),
+    key: "listPaneWidth", def: 320, min: 180, max: 900,
   });
 })();
 

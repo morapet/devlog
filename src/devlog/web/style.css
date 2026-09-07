@@ -241,7 +241,8 @@ body[data-focus="1"] #detail {
     z-index: 1;
     display: none !important;   /* hidden unless it's the active pane */
   }
-  body[data-mobile="1"] #splitter { display: none !important; }
+  body[data-mobile="1"] #splitter,
+  body[data-mobile="1"] #sidebar-splitter { display: none !important; }
 
   /* Reveal only the pane matching the current stack level. !important beats
      the .hidden toggling that showHomeOnly() does for the desktop layout. */
