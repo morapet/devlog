@@ -121,15 +121,18 @@ body[data-focus="1"] #detail {
   align-items: stretch;
   padding: 1.5rem 2rem 4rem 1rem;
 }
+/* Article fills the width left of the TOC (no artificial cap) so the reading
+   column is at least as wide as the edit-mode preview — you trade width against
+   the TOC via the divider. */
 .focus-layout .focus-article {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: 52rem;
   padding-left: 1.5rem;
 }
-/* When the TOC is hidden, centre the article rather than left-hugging it. */
+/* With the TOC hidden, centre a comfortable column instead of stretching one
+   long line across the whole pane. */
 .focus-layout.no-toc { justify-content: center; }
-.focus-layout.no-toc .focus-article { padding-left: 0; }
+.focus-layout.no-toc .focus-article { max-width: 60rem; padding-left: 0; }
 
 .md-toc {
   flex: 0 0 auto;

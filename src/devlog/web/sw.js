@@ -2,7 +2,7 @@
 // Safari (iOS 16.4+) and survive offline access to the app shell. The backend
 // API is always fetched live — caching it would silently serve stale data.
 
-const VERSION = "devlog-shell-v13";
+const VERSION = "devlog-shell-v14";
 
 // The app shell — everything required to bootstrap the UI even offline.
 // Versioned via VERSION so a new deploy invalidates the previous cache.
