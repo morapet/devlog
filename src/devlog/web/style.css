@@ -238,6 +238,41 @@ body[data-focus="1"] #detail {
 }
 
 /* ==========================================================================
+   Edit mode: rendered preview (left) | draggable divider | editor (right).
+   ========================================================================== */
+.edit-split { display: flex; align-items: stretch; gap: 0; }
+.edit-split .edit-preview {
+  flex: 0 0 auto;
+  width: 50%;              /* default; overridden by the drag-resizer */
+  min-width: 0;
+}
+.edit-split .edit-editor {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* Full-height draggable divider; transparent borders widen the grab area. */
+.edit-pane-splitter {
+  flex: 0 0 auto;
+  width: 1px;
+  align-self: stretch;
+  margin: 0 0.5rem;
+  background: #e2e8f0;
+  cursor: col-resize;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  background-clip: padding-box;
+}
+.edit-pane-splitter:hover  { background: #93c5fd; background-clip: padding-box; }
+.edit-pane-splitter:active { background: #60a5fa; background-clip: padding-box; }
+
+/* Stack the two panes on narrow widths; drop the vertical divider. */
+@media (max-width: 767px) {
+  .edit-split { flex-direction: column; gap: 0.75rem; }
+  .edit-split .edit-preview { width: 100% !important; }
+  .edit-pane-splitter { display: none; }
+}
+
+/* ==========================================================================
    Mobile (phone) layout — drill-down stack + bottom tab bar.
    Desktop is untouched: everything below only applies at ≤640px, and is
    gated on body[data-mobile="1"] (set by the JS matchMedia controller).
