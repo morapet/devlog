@@ -129,10 +129,10 @@ body[data-focus="1"] #detail {
   min-width: 0;
   padding-left: 1.5rem;
 }
-/* With the TOC hidden, centre a comfortable column instead of stretching one
-   long line across the whole pane. */
-.focus-layout.no-toc { justify-content: center; }
-.focus-layout.no-toc .focus-article { max-width: 60rem; padding-left: 0; }
+/* With the TOC hidden, keep the article left-aligned and full-width (same as
+   when the TOC is shown) rather than a narrow centred column. */
+.focus-layout.no-toc { justify-content: flex-start; }
+.focus-layout.no-toc .focus-article { max-width: none; padding-left: 0; }
 
 .md-toc {
   flex: 0 0 auto;
