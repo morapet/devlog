@@ -2736,7 +2736,7 @@ function applyTheme(theme) {
   const btn = $("#theme-toggle");
   if (btn) btn.textContent = theme === "dark" ? "☀ Light" : "🌙 Dark";
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute("content", theme === "dark" ? "#0b1220" : "#0f172a");
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#1e1e1e" : "#0f172a");
 }
 applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
 $("#theme-toggle") && $("#theme-toggle").addEventListener("click", () => {
