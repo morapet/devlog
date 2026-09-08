@@ -46,6 +46,42 @@
 .prose-body code { background: #f1f5f9; padding: 0.1em 0.35em; border-radius: 3px; font-size: 0.9em; }
 .prose-body pre { background: #0f172a; color: #e2e8f0; padding: 0.6em 0.8em; border-radius: 6px; overflow-x: auto; font-size: 0.85em; }
 .prose-body pre code { background: transparent; color: inherit; padding: 0; }
+
+/* Syntax highlighting. The code block is dark in BOTH themes, but highlight.js
+   ships a LIGHT (GitHub) theme whose token colours are dark — unreadable on the
+   dark block (e.g. #032f62 strings on navy). Repaint with a GitHub-dark palette
+   in both themes. Each rule is (0,2,0) so it beats the vendor `.hljs-*` (0,1,0)
+   regardless of stylesheet order. */
+.prose-body .hljs { color: #e6edf3; background: transparent; }
+.prose-body .hljs-comment,
+.prose-body .hljs-quote { color: #8b949e; font-style: italic; }
+.prose-body .hljs-keyword,
+.prose-body .hljs-selector-tag,
+.prose-body .hljs-literal,
+.prose-body .hljs-type,
+.prose-body .hljs-tag,
+.prose-body .hljs-name,
+.prose-body .hljs-built_in { color: #ff7b72; }
+.prose-body .hljs-string,
+.prose-body .hljs-meta .hljs-string,
+.prose-body .hljs-regexp,
+.prose-body .hljs-addition { color: #a5d6ff; }
+.prose-body .hljs-number,
+.prose-body .hljs-symbol,
+.prose-body .hljs-bullet,
+.prose-body .hljs-attr,
+.prose-body .hljs-attribute,
+.prose-body .hljs-variable,
+.prose-body .hljs-template-variable { color: #79c0ff; }
+.prose-body .hljs-title,
+.prose-body .hljs-section,
+.prose-body .hljs-selector-id,
+.prose-body .hljs-selector-class { color: #d2a8ff; }
+.prose-body .hljs-params,
+.prose-body .hljs-meta { color: #c9d1d9; }
+.prose-body .hljs-deletion { color: #ffa198; }
+.prose-body .hljs-emphasis { font-style: italic; }
+.prose-body .hljs-strong { font-weight: 700; }
 .prose-body a { color: #2563eb; text-decoration: underline; }
 .prose-body blockquote { border-left: 3px solid #cbd5e1; padding-left: 0.8em; color: #475569; margin: 0.4em 0; }
 .prose-body table { border-collapse: collapse; margin: 0.6em 0; }
@@ -551,6 +587,11 @@ html[data-theme="dark"] { color-scheme: dark; background: #1e1e1e; }
 [data-theme="dark"] .prose-body h2 { border-bottom-color: #38383a; }
 [data-theme="dark"] .prose-body .md-h-num { color: #636366; }
 [data-theme="dark"] .prose-body code { background: #3a3a3c; color: #f2f2f7; }
+/* Code blocks: the base `pre` uses a slate navy (#0f172a) that clashes with the
+   graphite theme — override to a neutral near-black, and reset the inner code so
+   it doesn't paint the inline-code chip colour over the block. */
+[data-theme="dark"] .prose-body pre { background: #161618; border: 1px solid #2e2e2e; color: #e6edf3; }
+[data-theme="dark"] .prose-body pre code { background: transparent; color: inherit; }
 [data-theme="dark"] .prose-body a { color: #0a84ff; text-decoration-color: rgba(10,132,255,0.5); }
 [data-theme="dark"] .prose-body blockquote { border-left-color: #48484a; color: #98989d; }
 [data-theme="dark"] .prose-body th, [data-theme="dark"] .prose-body td { border-color: #38383a; }
