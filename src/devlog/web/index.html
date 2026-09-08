@@ -5,6 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Devlog</title>
 
+<!-- Apply the saved (or system) colour theme before first paint so the page
+     never flashes light-then-dark. app.js later wires the toggle button. -->
+<script>
+  (function () {
+    try {
+      var t = localStorage.getItem("theme");
+      if (t !== "light" && t !== "dark") {
+        t = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      }
+      document.documentElement.setAttribute("data-theme", t);
+    } catch (e) { document.documentElement.setAttribute("data-theme", "light"); }
+  })();
+</script>
+
 <!-- PWA -->
 <link rel="manifest" href="/static/manifest.json" />
 <meta name="theme-color" content="#0f172a" />
@@ -32,7 +46,7 @@
 <!-- Mermaid -->
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 
-<link rel="stylesheet" href="/static/style.css?v=21" />
+<link rel="stylesheet" href="/static/style.css?v=22" />
 </head>
 <body class="h-screen flex flex-col bg-slate-50 text-slate-900 antialiased">
   <header class="h-12 border-b border-slate-200 bg-white px-4 flex items-center gap-4 shrink-0">
@@ -55,6 +69,11 @@
               class="px-2 py-1 text-xs border border-slate-300 rounded text-slate-700 hover:bg-slate-100"
               title="Version history">
         History ▾
+      </button>
+      <button id="theme-toggle"
+              class="px-2 py-1 text-xs border border-slate-300 rounded text-slate-700 hover:bg-slate-100"
+              title="Toggle light / dark theme">
+        🌙 Dark
       </button>
       <button id="data-menu"
               class="px-2 py-1 text-xs border border-slate-300 rounded text-slate-700 hover:bg-slate-100"
@@ -99,6 +118,6 @@
     <div class="bg-white rounded-lg shadow-xl w-[480px] max-h-[80vh] overflow-y-auto p-4" id="modal"></div>
   </div>
 
-  <script src="/static/app.js?v=21"></script>
+  <script src="/static/app.js?v=22"></script>
 </body>
 </html>

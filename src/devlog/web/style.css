@@ -403,3 +403,156 @@ mark.find-hit.active {
   display: inline-flex; align-items: center; justify-content: center;
 }
 #find-bar button:hover { background: #f1f5f9; }
+
+/* ==========================================================================
+   Dark theme.
+   The UI is built from hardcoded Tailwind utilities (bg-white, text-slate-*,
+   …) plus the custom component styles above, all light. Rather than rewrite
+   every element, we remap the surfaces/text/borders under [data-theme="dark"]
+   (set on <html> by the inline boot script + the header toggle). Descendant
+   selectors like `[data-theme="dark"] .bg-white` are specificity (0,2,0) and
+   so beat the single-class utilities regardless of stylesheet order.
+   Palette: page #0b1220 · surface #0f172a · raised #1e293b · border #293548
+            text #e2e8f0 · dim #94a3b8 · accent #60a5fa
+   ========================================================================== */
+html[data-theme="dark"] { color-scheme: dark; background: #0b1220; }
+
+/* ---- Tailwind utility remaps (surfaces) ---- */
+[data-theme="dark"] .bg-white       { background-color: #0f172a !important; }
+[data-theme="dark"] .bg-slate-50    { background-color: #0b1220 !important; }
+[data-theme="dark"] .bg-slate-50\/60{ background-color: rgba(11,18,32,0.6) !important; }
+[data-theme="dark"] .bg-slate-100   { background-color: #1e293b !important; }
+[data-theme="dark"] .bg-slate-200   { background-color: #334155 !important; }
+[data-theme="dark"] .bg-slate-300   { background-color: #475569 !important; }
+[data-theme="dark"] .bg-amber-50    { background-color: rgba(245,158,11,0.12) !important; }
+[data-theme="dark"] .bg-amber-100   { background-color: rgba(245,158,11,0.18) !important; }
+/* slate-900 / black overlays (toast, backdrops, active pills) already read
+   correctly on a dark page, so they're intentionally left untouched. */
+
+/* ---- utility remaps (text) ---- */
+[data-theme="dark"] .text-slate-900 { color: #f1f5f9 !important; }
+[data-theme="dark"] .text-slate-800 { color: #e2e8f0 !important; }
+[data-theme="dark"] .text-slate-700 { color: #cbd5e1 !important; }
+[data-theme="dark"] .text-slate-600 { color: #94a3b8 !important; }
+[data-theme="dark"] .text-slate-500 { color: #94a3b8 !important; }
+[data-theme="dark"] .text-slate-400 { color: #64748b !important; }
+[data-theme="dark"] .text-red-600   { color: #f87171 !important; }
+[data-theme="dark"] .text-emerald-600 { color: #34d399 !important; }
+[data-theme="dark"] .text-blue-600,
+[data-theme="dark"] .text-blue-700  { color: #60a5fa !important; }
+[data-theme="dark"] .text-amber-600,
+[data-theme="dark"] .text-amber-700,
+[data-theme="dark"] .text-amber-800 { color: #fbbf24 !important; }
+
+/* ---- utility remaps (borders) ---- */
+[data-theme="dark"] .border-slate-100 { border-color: #1e293b !important; }
+[data-theme="dark"] .border-slate-200 { border-color: #293548 !important; }
+[data-theme="dark"] .border-slate-300 { border-color: #334155 !important; }
+[data-theme="dark"] .border-amber-200 { border-color: rgba(245,158,11,0.4) !important; }
+[data-theme="dark"] .border-amber-300 { border-color: rgba(245,158,11,0.45) !important; }
+[data-theme="dark"] .border-red-300   { border-color: rgba(239,68,68,0.45) !important; }
+
+/* ---- utility remaps (hover states) ---- */
+[data-theme="dark"] .hover\:bg-slate-50:hover  { background-color: #111c30 !important; }
+[data-theme="dark"] .hover\:bg-slate-100:hover { background-color: #1e293b !important; }
+[data-theme="dark"] .hover\:bg-slate-200:hover { background-color: #334155 !important; }
+[data-theme="dark"] .hover\:bg-red-50:hover    { background-color: rgba(239,68,68,0.14) !important; }
+[data-theme="dark"] .hover\:bg-amber-100:hover { background-color: rgba(245,158,11,0.2) !important; }
+[data-theme="dark"] .hover\:text-slate-800:hover,
+[data-theme="dark"] .hover\:text-slate-900:hover { color: #f1f5f9 !important; }
+[data-theme="dark"] .hover\:text-red-600:hover,
+[data-theme="dark"] .hover\:text-red-700:hover { color: #f87171 !important; }
+[data-theme="dark"] .hover\:border-slate-300:hover,
+[data-theme="dark"] .hover\:border-slate-400:hover { border-color: #475569 !important; }
+[data-theme="dark"] .hover\:border-red-300:hover { border-color: rgba(239,68,68,0.5) !important; }
+
+/* ---- form controls that rely on the browser default (white) ---- */
+[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+[data-theme="dark"] input::placeholder,
+[data-theme="dark"] textarea::placeholder { color: #64748b; }
+
+/* ---- markdown body ---- */
+[data-theme="dark"] .prose-body { color: #cbd5e1; }
+[data-theme="dark"] .prose-body h1, [data-theme="dark"] .prose-body h2,
+[data-theme="dark"] .prose-body h3 { color: #f1f5f9; }
+[data-theme="dark"] .prose-body h4 { color: #cbd5e1; }
+[data-theme="dark"] .prose-body h5 { color: #94a3b8; }
+[data-theme="dark"] .prose-body h6 { color: #94a3b8; }
+[data-theme="dark"] .prose-body h1 { border-bottom-color: #293548; }
+[data-theme="dark"] .prose-body h2 { border-bottom-color: #22304a; }
+[data-theme="dark"] .prose-body .md-h-num { color: #64748b; }
+[data-theme="dark"] .prose-body code { background: #1e293b; color: #e2e8f0; }
+[data-theme="dark"] .prose-body a { color: #60a5fa; }
+[data-theme="dark"] .prose-body blockquote { border-left-color: #475569; color: #94a3b8; }
+[data-theme="dark"] .prose-body th, [data-theme="dark"] .prose-body td { border-color: #293548; }
+[data-theme="dark"] .prose-body th { background: #1e293b; }
+[data-theme="dark"] .prose-body hr { border-top-color: #293548; }
+[data-theme="dark"] .prose-body .footnotes { border-top-color: #293548; color: #94a3b8; }
+/* Mermaid renders a light-themed SVG; keep its container light so diagrams stay
+   legible instead of dark-text-on-dark. */
+[data-theme="dark"] .prose-body .mermaid-block { background: #f1f5f9; border-color: #293548; }
+
+/* ---- admonitions ---- */
+[data-theme="dark"] .admonition { background: #17233a; border-left-color: #475569; }
+[data-theme="dark"] .admonition-title { color: #cbd5e1; }
+[data-theme="dark"] .admonition.note, [data-theme="dark"] .admonition.info { background: rgba(59,130,246,0.12); border-color: #3b82f6; }
+[data-theme="dark"] .admonition.note > .admonition-title,
+[data-theme="dark"] .admonition.info > .admonition-title { color: #93c5fd; }
+[data-theme="dark"] .admonition.tip { background: rgba(16,185,129,0.12); border-color: #10b981; }
+[data-theme="dark"] .admonition.tip > .admonition-title { color: #6ee7b7; }
+[data-theme="dark"] .admonition.warning { background: rgba(245,158,11,0.12); border-color: #f59e0b; }
+[data-theme="dark"] .admonition.warning > .admonition-title { color: #fcd34d; }
+[data-theme="dark"] .admonition.danger { background: rgba(239,68,68,0.12); border-color: #ef4444; }
+[data-theme="dark"] .admonition.danger > .admonition-title { color: #fca5a5; }
+
+/* ---- selected list row ---- */
+[data-theme="dark"] .list-row.selected { background: rgba(37,99,235,0.18); border-left-color: #60a5fa; }
+
+/* ---- table of contents ---- */
+[data-theme="dark"] .md-toc a { color: #94a3b8; }
+[data-theme="dark"] .md-toc a:hover { background: #1e293b; color: #f1f5f9; }
+[data-theme="dark"] .md-toc a.active { color: #93c5fd; border-left-color: #60a5fa; background: rgba(37,99,235,0.18); }
+[data-theme="dark"] .md-toc-empty { color: #475569; }
+[data-theme="dark"] .toc-splitter { background: #293548; }
+
+/* ---- reader toolbar toggles ---- */
+[data-theme="dark"] .reader-toggle { border-color: #334155; color: #cbd5e1; background: #0f172a; }
+[data-theme="dark"] .reader-toggle:hover { background: #1e293b; }
+[data-theme="dark"] .reader-toggle.on { border-color: #3b82f6; background: rgba(37,99,235,0.18); color: #93c5fd; }
+
+/* ---- edit-mode pane splitter ---- */
+[data-theme="dark"] .edit-pane-splitter { background: #293548; }
+
+/* ---- tab buttons ---- */
+[data-theme="dark"] .tab-btn { color: #cbd5e1; }
+[data-theme="dark"] .tab-btn:hover { background: #1e293b; }
+[data-theme="dark"] .tab-btn.active { background: #334155; color: #f8fafc; }
+[data-theme="dark"] #mobile-tabbar button.active { color: #f1f5f9; }
+
+/* ---- chips ---- */
+[data-theme="dark"] .chip           { background: #1e293b; color: #cbd5e1; }
+[data-theme="dark"] .chip.todo      { background: #1e293b; color: #94a3b8; }
+[data-theme="dark"] .chip.today     { background: rgba(37,99,235,0.22); color: #93c5fd; }
+[data-theme="dark"] .chip.doing     { background: rgba(245,158,11,0.22); color: #fcd34d; }
+[data-theme="dark"] .chip.blocked   { background: rgba(239,68,68,0.22); color: #fca5a5; }
+[data-theme="dark"] .chip.someday   { background: rgba(99,102,241,0.22); color: #a5b4fc; }
+[data-theme="dark"] .chip.done      { background: rgba(16,185,129,0.2);  color: #6ee7b7; }
+[data-theme="dark"] .chip.cancelled { background: #1e293b; color: #64748b; }
+[data-theme="dark"] .chip.high      { background: rgba(239,68,68,0.22); color: #fca5a5; }
+[data-theme="dark"] .chip.normal    { background: #1e293b; color: #94a3b8; }
+[data-theme="dark"] .chip.low       { background: #1e293b; color: #64748b; }
+
+/* ---- find-in-note ---- */
+[data-theme="dark"] mark.find-hit { background: #a16207; color: #fef3c7; }
+[data-theme="dark"] mark.find-hit.active { background: #ea580c; color: #fff; box-shadow: 0 0 0 2px rgba(234,88,12,0.5); }
+[data-theme="dark"] #find-bar { background: #0f172a; border-color: #293548; box-shadow: 0 6px 20px rgba(0,0,0,0.5); }
+[data-theme="dark"] #find-bar input { color: #e2e8f0; background: transparent; }
+[data-theme="dark"] #find-bar .find-count { color: #94a3b8; }
+[data-theme="dark"] #find-bar button { color: #cbd5e1; }
+[data-theme="dark"] #find-bar button:hover { background: #1e293b; }
