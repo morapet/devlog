@@ -11,7 +11,7 @@ Local-first developer **task / note / link tracker** — one SQLite file, a Fast
 - **A document-grade markdown view** — heading hierarchy, a toggleable table of contents with optional numbering, footnotes, task lists, admonitions, code highlighting, and Mermaid.
 - **Time tracking** — one task "doing" at a time, editable sessions, end-of-workday auto-pause.
 - **Drawings** — a vendored, fully-offline drawio; `![[drawing:N]]` renders inline.
-- **MCP server** — `devlog-mcp` exposes 18 tools so Claude can create and search everything.
+- **MCP server** — `devlog-mcp` exposes 20 tools so Claude can create and search everything.
 
 ---
 
@@ -151,7 +151,7 @@ Devlog ships built-in auth: loopback is trusted, remote devices need a shared se
 
 ## MCP server
 
-Exposes the HTTP API as 18 MCP tools for Claude Desktop / Claude Code. Add to your client config (e.g. `~/.claude.json`):
+Exposes the HTTP API as 20 MCP tools for Claude Desktop / Claude Code. Add to your client config (e.g. `~/.claude.json`):
 
 ```json
 {
@@ -198,7 +198,7 @@ src/devlog/          FastAPI app + web assets
   api/               routers: projects, items, sessions, attachments, search, stats, settings
   web/               index.html, app.js, style.css, vendor/drawio/ (ignored)
   db.py              schema + thread-local connections + migrations
-  mcp_server.py      FastMCP wrapper (18 tools)
+  mcp_server.py      FastMCP wrapper (20 tools)
 clients/mac-app/     SwiftUI native app (WKWebView)
 clients/linux-app/   GTK3 + WebKit2GTK app
 deploy/              cloudflare · vps-caddy · pythonanywhere · cloud-run

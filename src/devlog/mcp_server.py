@@ -528,6 +528,39 @@ def stats(
     return _req("GET", "/stats", params=params)
 
 
+# ----------------------- Maintenance -----------------------
+
+@mcp.tool()
+def compact_history(keep: int = 20, item_id: Optional[int] = None) -> dict:
+    """Prune item version history, keeping only the newest `keep` snapshots per item.
+
+    The current content is always kept (newest snapshots are retained). Pass
+    item_id to compact a single item, or omit it to compact every item.
+
+    Args:
+        keep: how many recent versions to keep per item (default 20).
+        item_id: optional single item to compact; omit for all items.
+
+    Returns {removed, remaining}.
+    """
+    body: dict[str, Any] = {"keep": keep}
+    if item_id is not None:
+        body["item_id"] = item_id
+    return _req("POST", "/versions/compact", json=body)
+
+
+@mcp.tool()
+def cleanup_backups(keep: int = 10) -> dict:
+    """Delete old whole-DB backups, keeping only the newest `keep` files.
+
+    Args:
+        keep: how many recent backups to keep (default 10; 0 removes all).
+
+    Returns {deleted, remaining}.
+    """
+    return _req("POST", "/backups/prune", json={"keep": keep})
+
+
 # ----------------------- Entry point -----------------------
 
 def run() -> None:
