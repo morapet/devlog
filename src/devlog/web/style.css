@@ -254,11 +254,66 @@ body[data-focus="1"] #detail {
   min-width: 0;
   overflow: auto;
 }
-.edit-split .edit-editor {
+/* The editor is a transparent textarea stacked over a highlight backdrop; the
+   wrapper is the flex child that fills the space. */
+.edit-editor-wrap {
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
-  resize: none;
 }
+/* The textarea and its backdrop MUST share identical text metrics and box so a
+   highlight painted on the backdrop lines up exactly with the source text. */
+.edit-editor-wrap .edit-editor,
+.edit-editor-wrap .edit-highlights {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0.75rem;                 /* == Tailwind p-3 */
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 0.25rem;           /* == rounded */
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875rem;              /* == text-sm */
+  line-height: 1.25rem;
+  letter-spacing: normal;
+  tab-size: 4;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.edit-editor-wrap .edit-editor {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  resize: none;
+  background: transparent;          /* so the backdrop's highlight shows through */
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+.edit-editor-wrap .edit-highlights {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;                 /* scrolled programmatically in step with the textarea */
+  color: transparent;               /* text is invisible; only <mark> shows */
+  background: #ffffff;
+  border-color: transparent;
+  pointer-events: none;
+}
+.edit-editor-wrap .edit-highlights mark {
+  background: rgba(59, 130, 246, 0.28);
+  color: transparent;
+  border-radius: 2px;
+}
+
+/* Rendered blocks tinted when their source lines are selected in the editor. */
+.edit-preview .src-highlight {
+  background: rgba(59, 130, 246, 0.16);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16);
+}
+
 /* Full-height draggable divider; transparent borders widen the grab area. */
 .edit-pane-splitter {
   flex: 0 0 auto;
@@ -278,7 +333,7 @@ body[data-focus="1"] #detail {
 @media (max-width: 767px) {
   .edit-split { flex-direction: column; gap: 0.75rem; min-height: 0; }
   .edit-split .edit-preview { width: 100% !important; min-height: 260px; }
-  .edit-split .edit-editor { min-height: 320px; }
+  .edit-editor-wrap { min-height: 320px; }
   .edit-pane-splitter { display: none; }
 }
 
@@ -403,23 +458,6 @@ mark.find-hit.active {
   display: inline-flex; align-items: center; justify-content: center;
 }
 #find-bar button:hover { background: #f1f5f9; }
-
-/* ---- copy-as popover (rendered-selection → choose text or markdown) ---- */
-.copy-popover {
-  position: fixed; z-index: 45;
-  display: flex; gap: 4px;
-  background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16);
-  padding: 4px;
-}
-.copy-popover button {
-  font-size: 0.72rem; line-height: 1;
-  padding: 5px 9px; border-radius: 5px;
-  border: 1px solid transparent; cursor: pointer;
-  color: #334155; background: #f8fafc;
-  white-space: nowrap;
-}
-.copy-popover button:hover { background: #eef2f7; }
 
 /* ==========================================================================
    Dark theme — macOS dark mode palette.
@@ -578,7 +616,8 @@ html[data-theme="dark"] { color-scheme: dark; background: #1e1e1e; }
 [data-theme="dark"] #find-bar button { color: #e5e5ea; }
 [data-theme="dark"] #find-bar button:hover { background: #3a3a3c; }
 
-/* ---- copy-as popover ---- */
-[data-theme="dark"] .copy-popover { background: #2c2c2e; border-color: #38383a; box-shadow: 0 6px 20px rgba(0,0,0,0.6); }
-[data-theme="dark"] .copy-popover button { background: #3a3a3c; color: #e5e5ea; }
-[data-theme="dark"] .copy-popover button:hover { background: #48484a; }
+/* ---- edit-mode selection cross-highlight ---- */
+[data-theme="dark"] .edit-editor-wrap .edit-editor { border-color: #48484a; color: #f2f2f7; }
+[data-theme="dark"] .edit-editor-wrap .edit-highlights { background: #1c1c1e; }
+[data-theme="dark"] .edit-editor-wrap .edit-highlights mark { background: rgba(10, 132, 255, 0.38); }
+[data-theme="dark"] .edit-preview .src-highlight { background: rgba(10, 132, 255, 0.22); box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.22); }
