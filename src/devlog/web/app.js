@@ -1535,10 +1535,16 @@ function md() {
   return m;
 }
 
-// Initialize Mermaid once.
-if (window.mermaid) {
-  try { window.mermaid.initialize({ startOnLoad: false, theme: "default", securityLevel: "loose" }); } catch {}
+// Mermaid's built-in theme matching the app theme: dark diagrams in dark mode,
+// so they don't sit on a glaring light canvas.
+function mermaidTheme() {
+  return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "default";
 }
+function initMermaid() {
+  if (!window.mermaid) return;
+  try { window.mermaid.initialize({ startOnLoad: false, theme: mermaidTheme(), securityLevel: "loose" }); } catch {}
+}
+initMermaid();
 
 function renderMarkdown(text) {
   // Used in read-only contexts (history preview). For the editor preview,
@@ -1869,6 +1875,8 @@ let _mermaidCounter = 0;
 async function processMermaidBlocks(container) {
   if (!window.mermaid) return;
   const blocks = container.querySelectorAll("pre.mermaid-source");
+  if (!blocks.length) return;
+  initMermaid(); // pick up the current app theme before rendering
   for (const block of blocks) {
     const source = block.textContent;
     const id = `mermaid-svg-${++_mermaidCounter}`;
@@ -1876,14 +1884,37 @@ async function processMermaidBlocks(container) {
       const { svg } = await window.mermaid.render(id, source);
       const wrap = document.createElement("div");
       wrap.className = "mermaid-block";
+      wrap.dataset.mermaidSrc = source; // kept so we can re-render on theme change
       wrap.innerHTML = svg;
       block.replaceWith(wrap);
     } catch (e) {
       const wrap = document.createElement("div");
       wrap.className = "mermaid-block mermaid-error";
+      wrap.dataset.mermaidSrc = source;
       wrap.textContent = "Mermaid error: " + (e?.message || e);
       block.replaceWith(wrap);
     }
+  }
+}
+
+// Re-render every rendered mermaid diagram on the page with the current theme.
+// Called when the light/dark theme is toggled.
+async function rerenderMermaidForTheme() {
+  if (!window.mermaid) return;
+  const blocks = document.querySelectorAll(".mermaid-block[data-mermaid-src]");
+  if (!blocks.length) return;
+  initMermaid();
+  for (const wrap of blocks) {
+    const source = wrap.dataset.mermaidSrc;
+    const id = `mermaid-svg-${++_mermaidCounter}`;
+    try {
+      const { svg } = await window.mermaid.render(id, source);
+      const nw = document.createElement("div");
+      nw.className = "mermaid-block";
+      nw.dataset.mermaidSrc = source;
+      nw.innerHTML = svg;
+      wrap.replaceWith(nw);
+    } catch { /* leave the existing render in place on failure */ }
   }
 }
 
@@ -2884,6 +2915,10 @@ function applyTheme(theme) {
   if (btn) btn.textContent = theme === "dark" ? "☀ Light" : "🌙 Dark";
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute("content", theme === "dark" ? "#1e1e1e" : "#0f172a");
+  // Pictures don't inherit CSS the way the rest of the UI does: re-render
+  // mermaid diagrams in the matching theme and re-tint inline drawings.
+  rerenderMermaidForTheme();
+  applyDrawingThemes();
 }
 applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
 $("#theme-toggle") && $("#theme-toggle").addEventListener("click", () => {
@@ -3193,6 +3228,10 @@ async function loadInlineDrawing(box, attId) {
   // the page's Tailwind styles. Otherwise text colors and fonts get clobbered.
   box.innerHTML = "";
   const shadow = box.shadowRoot || box.attachShadow({ mode: "open" });
+  // The drawio canvas is a light-themed SVG (white background, black strokes /
+  // text). Shadow DOM hides it from the page's [data-theme] CSS and WebKit
+  // doesn't support :host-context, so the dark treatment is injected as its own
+  // <style class="dl-theme"> and refreshed on toggle by applyDrawingThemes().
   shadow.innerHTML = `
     <style>
       :host { display: inline-block; max-width: 100%; line-height: 0; }
@@ -3205,8 +3244,25 @@ async function loadInlineDrawing(box, attId) {
       }
       foreignObject div { line-height: 1.2; }
     </style>
+    <style class="dl-theme">${drawingThemeCss()}</style>
     ${_sanitizeDrawioSvg(svg)}
   `;
+}
+
+// Dark mode inverts the light drawio canvas: white → near-black, black strokes
+// and text → light, hues roughly preserved (drawio is line art, so an invert +
+// hue-rotate reads well). Empty in light mode.
+function drawingThemeCss() {
+  const dark = document.documentElement.getAttribute("data-theme") === "dark";
+  return dark ? "svg { filter: invert(0.92) hue-rotate(180deg); }" : "";
+}
+
+// Refresh the dark treatment of every inline drawing after a theme toggle.
+function applyDrawingThemes() {
+  for (const box of document.querySelectorAll(".drawing-box")) {
+    const st = box.shadowRoot && box.shadowRoot.querySelector("style.dl-theme");
+    if (st) st.textContent = drawingThemeCss();
+  }
 }
 
 function invalidateDrawingCache(attId) {
