@@ -404,6 +404,23 @@ mark.find-hit.active {
 }
 #find-bar button:hover { background: #f1f5f9; }
 
+/* ---- copy-as popover (rendered-selection → choose text or markdown) ---- */
+.copy-popover {
+  position: fixed; z-index: 45;
+  display: flex; gap: 4px;
+  background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.16);
+  padding: 4px;
+}
+.copy-popover button {
+  font-size: 0.72rem; line-height: 1;
+  padding: 5px 9px; border-radius: 5px;
+  border: 1px solid transparent; cursor: pointer;
+  color: #334155; background: #f8fafc;
+  white-space: nowrap;
+}
+.copy-popover button:hover { background: #eef2f7; }
+
 /* ==========================================================================
    Dark theme — macOS dark mode palette.
    Graphite window/panel greys (no blue-grey slate); Apple's system blue is
@@ -560,3 +577,8 @@ html[data-theme="dark"] { color-scheme: dark; background: #1e1e1e; }
 [data-theme="dark"] #find-bar .find-count { color: #98989d; }
 [data-theme="dark"] #find-bar button { color: #e5e5ea; }
 [data-theme="dark"] #find-bar button:hover { background: #3a3a3c; }
+
+/* ---- copy-as popover ---- */
+[data-theme="dark"] .copy-popover { background: #2c2c2e; border-color: #38383a; box-shadow: 0 6px 20px rgba(0,0,0,0.6); }
+[data-theme="dark"] .copy-popover button { background: #3a3a3c; color: #e5e5ea; }
+[data-theme="dark"] .copy-popover button:hover { background: #48484a; }

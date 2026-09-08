@@ -1316,6 +1316,13 @@ function renderEditor(it, bodyVal) {
   const preview = el("div", { class: "edit-preview prose-body border border-slate-100 rounded p-3 bg-slate-50 overflow-auto", id: "md-preview" });
   renderMarkdownInto(preview, bodyVal);
 
+  // Selecting rendered text mirrors the matching markdown source into the
+  // editor's selection (see mirrorPreviewSelectionToEditor). Deferred a tick so
+  // the browser has finalized the selection by the time we read it.
+  const mirrorSel = () => setTimeout(() => mirrorPreviewSelectionToEditor(preview, ta), 0);
+  preview.addEventListener("mouseup", mirrorSel);
+  preview.addEventListener("dblclick", mirrorSel);
+
   // Click handler: navigate on #N and [[Title]] anchors, edit on drawings.
   preview.addEventListener("click", async (e) => {
     const drawingImg = e.target.closest("[data-edit-drawing]");
@@ -1448,7 +1455,7 @@ function admonitionPlugin(md) {
 
     const token = state.push("html_block", "", 0);
     token.content =
-      `<div class="admonition ${md.utils.escapeHtml(type)}" style="${boxStyle}">\n` +
+      `<div class="admonition ${md.utils.escapeHtml(type)}" style="${boxStyle}" data-src-start="${startLine}" data-src-end="${nextLine}">\n` +
       `<p class="admonition-title" style="${titleStyle}">${md.utils.escapeHtml(title)}</p>\n` +
       bodyHtml +
       `</div>\n`;
@@ -1488,6 +1495,24 @@ function md() {
   if (window.markdownitTaskLists) m.use(window.markdownitTaskLists, { enabled: true, label: true });
   if (window.markdownItAnchor) m.use(window.markdownItAnchor.default || window.markdownItAnchor, { level: 2, slugify: (s) => s.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, "") });
   m.use(admonitionPlugin); // our own — no external dep
+
+  // Tag every rendered block with its source line range (from the token's
+  // `.map`). The editor preview uses these to mirror a rendered-text selection
+  // back onto the matching markdown in the textarea. `map` is [startLine,
+  // endLine) with endLine exclusive; lines are 0-based. Harmless everywhere
+  // else — the attributes are just ignored.
+  m.core.ruler.push("src_line_map", (state) => {
+    for (const tok of state.tokens) {
+      // Open tags (nesting 1) and standalone block tokens (fence, hr, code)
+      // carry a map; skip closes (-1), inline children, and html_block (its
+      // attrs aren't rendered — the admonition plugin injects its own instead).
+      if (tok.map && tok.nesting !== -1 && tok.type !== "inline" && tok.type !== "html_block") {
+        tok.attrSet("data-src-start", String(tok.map[0]));
+        tok.attrSet("data-src-end", String(tok.map[1]));
+      }
+    }
+  });
+
   _md = m;
   return m;
 }
@@ -1504,6 +1529,136 @@ function renderMarkdown(text) {
   renderMarkdownInto(div, text);
   return div.innerHTML;
 }
+
+// ---------- edit mode: mirror a rendered-text selection onto the source ----
+// When you select text in the rendered preview, we map the touched blocks back
+// to their markdown source lines (via the data-src-start/-end attributes the
+// `src_line_map` rule stamps on every block) and mirror that range as the
+// textarea's selection — so the same passage can be copied either as rendered
+// text (from the preview) or as raw markdown (from the editor). Mapping is
+// block-granular: selecting part of a paragraph selects that whole paragraph's
+// source, which is predictable and robust against markdown/rendered mismatch.
+
+// Char offset where each 0-based line starts; offs[k] = start of line k.
+function lineStartOffsets(text) {
+  const offs = [0];
+  for (let i = 0; i < text.length; i++) if (text[i] === "\n") offs.push(i + 1);
+  return offs;
+}
+
+// Nearest ancestor (self included, up to but excluding `root`) that carries a
+// source-line range.
+function nearestMappedBlock(node, root) {
+  let e = node && node.nodeType === 1 ? node : node && node.parentElement;
+  while (e && e !== root) {
+    if (e.hasAttribute && e.hasAttribute("data-src-start")) return e;
+    e = e.parentElement;
+  }
+  return null;
+}
+
+function mirrorPreviewSelectionToEditor(preview, ta) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
+  const range = sel.getRangeAt(0);
+  // Only act on selections that live inside this preview.
+  if (!preview.contains(range.commonAncestorContainer)) return;
+
+  const startBlock = nearestMappedBlock(range.startContainer, preview);
+  const endBlock = nearestMappedBlock(range.endContainer, preview);
+  if (!startBlock || !endBlock) return;
+
+  const startLine = Number(startBlock.getAttribute("data-src-start"));
+  const endLineExcl = Number(endBlock.getAttribute("data-src-end"));
+  if (!Number.isFinite(startLine) || !Number.isFinite(endLineExcl)) return;
+
+  const text = ta.value;
+  const offs = lineStartOffsets(text);
+  const startCh = offs[Math.max(0, Math.min(startLine, offs.length - 1))];
+  let endCh = endLineExcl < offs.length ? offs[endLineExcl] : text.length;
+  // `data-src-end` is the line AFTER the block, so endCh points at the start of
+  // the next block; trim one trailing newline so we stop at the block's end.
+  if (endCh > startCh && text[endCh - 1] === "\n") endCh--;
+  if (endCh <= startCh) return;
+
+  try { ta.setSelectionRange(startCh, endCh); } catch { return; }
+  // Reveal the mirrored range in the (possibly scrolled) editor without stealing
+  // focus, so the rendered selection stays intact and copyable too.
+  const cs = getComputedStyle(ta);
+  const lineH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4) || 18;
+  const padTop = parseFloat(cs.paddingTop) || 0;
+  const target = padTop + startLine * lineH - ta.clientHeight / 3;
+  ta.scrollTop = Math.max(0, target);
+
+  // Offer an explicit choice of which form to copy. An unfocused textarea
+  // doesn't paint its selection and a click would reset it, so a small popover
+  // is the reliable way to grab the markdown source without losing it.
+  showCopyPopover(range.getBoundingClientRect(), sel.toString(), text.slice(startCh, endCh));
+}
+
+// Copy `s` to the clipboard, falling back to execCommand for WKWebView / older
+// engines where the async Clipboard API is unavailable.
+async function copyText(s) {
+  try { await navigator.clipboard.writeText(s); return true; } catch {}
+  try {
+    const t = document.createElement("textarea");
+    t.value = s;
+    t.style.cssText = "position:fixed;top:-1000px;opacity:0;";
+    document.body.appendChild(t);
+    t.select();
+    const ok = document.execCommand("copy");
+    t.remove();
+    return ok;
+  } catch { return false; }
+}
+
+let _copyPopover = null;
+function hideCopyPopover() { if (_copyPopover) { _copyPopover.remove(); _copyPopover = null; } }
+
+// Floating "copy as…" toolbar shown at a preview selection. `rendered` and
+// `markdown` are captured now, so the buttons still copy the right thing even
+// after the selection is cleared by the click.
+function showCopyPopover(rect, rendered, markdown) {
+  hideCopyPopover();
+  if (!rendered) return;
+  const mkBtn = (label, title, payload) =>
+    el("button", {
+      type: "button", title,
+      onclick: async (e) => {
+        e.preventDefault(); e.stopPropagation();
+        const ok = await copyText(payload);
+        toast(ok ? `Copied ${label}` : "Copy failed");
+        hideCopyPopover();
+        const s = window.getSelection(); if (s) s.removeAllRanges();
+      },
+    }, label === "text" ? "⧉ Text" : "⧉ Markdown");
+
+  const pop = el("div", { class: "copy-popover" },
+    mkBtn("text", "Copy the rendered text", rendered),
+    mkBtn("markdown", "Copy the markdown source", markdown),
+  );
+  // Keep the selection alive when a button is pressed (prevents the mousedown
+  // from moving focus / collapsing the selection before the click lands).
+  pop.addEventListener("mousedown", (e) => e.preventDefault());
+  document.body.appendChild(pop);
+
+  const w = pop.offsetWidth, h = pop.offsetHeight;
+  let top = rect.bottom + 6;
+  if (top + h > window.innerHeight - 6) top = Math.max(6, rect.top - h - 6);
+  let left = Math.max(6, Math.min(rect.left, window.innerWidth - w - 6));
+  pop.style.top = top + "px";
+  pop.style.left = left + "px";
+  _copyPopover = pop;
+}
+
+// Dismiss the copy popover when the selection is gone or the view moves.
+document.addEventListener("selectionchange", () => {
+  const s = window.getSelection();
+  if (!s || s.isCollapsed) hideCopyPopover();
+});
+document.addEventListener("scroll", hideCopyPopover, true);
+window.addEventListener("resize", hideCopyPopover);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCopyPopover(); });
 
 // ---------- reading-view: table of contents + heading numbering ----------
 
