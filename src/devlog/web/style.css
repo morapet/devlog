@@ -91,6 +91,10 @@
 .prose-body .mermaid-block svg { max-width: 100%; height: auto; }
 .prose-body .mermaid-error { color: #b91c1c; font-family: monospace; font-size: 0.85em; }
 
+/* Embedded images (![alt](url)): a theme-aware frame so they don't float on the
+   page, and their backing follows the theme instead of glaring white in dark. */
+.prose-body img { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #e2e8f0; background: #ffffff; }
+
 /* "Selected" item row in list */
 .list-row.selected { background: #eff6ff; border-left-color: #2563eb; }
 
@@ -555,7 +559,12 @@ html[data-theme="dark"] { color-scheme: dark; background: #1e1e1e; }
 [data-theme="dark"] .prose-body .footnotes { border-top-color: #38383a; color: #98989d; }
 /* Mermaid renders a light-themed SVG; keep its container light so diagrams stay
    legible instead of dark-text-on-dark. */
-[data-theme="dark"] .prose-body .mermaid-block { background: #f1f5f9; border-color: #38383a; }
+/* Mermaid now re-renders in its dark theme (see rerenderMermaidForTheme), so the
+   container is graphite rather than a forced-light canvas. */
+[data-theme="dark"] .prose-body .mermaid-block { background: #2c2c2e; border-color: #38383a; }
+/* Embedded images: dark backing + separator. Transparent images then sit on a
+   dark matte; opaque photos are untouched (we don't filter their pixels). */
+[data-theme="dark"] .prose-body img { background: #2c2c2e; border-color: #38383a; }
 
 /* ---- admonitions (semantic callouts keep their hue, Apple accent set) ---- */
 [data-theme="dark"] .admonition { background: #2c2c2e; border-left-color: #48484a; }
