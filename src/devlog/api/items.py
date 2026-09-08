@@ -165,6 +165,67 @@ def list_versions(item_id: int) -> list[Version]:
     return [Version.model_validate(dict(r)) for r in rows]
 
 
+class CompactRequest(BaseModel):
+    keep: int = 20
+    item_id: Optional[int] = None
+
+
+class CompactResult(BaseModel):
+    removed: int
+    remaining: int
+
+
+class VersionStats(BaseModel):
+    total_versions: int
+    items_with_versions: int
+
+
+_COMPACT_ALL = """
+DELETE FROM item_versions WHERE id IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY item_id ORDER BY saved_at DESC, id DESC
+    ) AS rn FROM item_versions
+  ) WHERE rn > ?
+)
+"""
+
+_COMPACT_ONE = """
+DELETE FROM item_versions WHERE id IN (
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (
+      PARTITION BY item_id ORDER BY saved_at DESC, id DESC
+    ) AS rn FROM item_versions WHERE item_id = ?
+  ) WHERE rn > ?
+)
+"""
+
+
+@router.get("/versions/stats", response_model=VersionStats)
+def versions_stats() -> VersionStats:
+    row = conn().execute(
+        "SELECT COUNT(*), COUNT(DISTINCT item_id) FROM item_versions"
+    ).fetchone()
+    return VersionStats(total_versions=row[0], items_with_versions=row[1])
+
+
+@router.post("/versions/compact", response_model=CompactResult)
+def compact_history(req: CompactRequest) -> CompactResult:
+    """Keep only the newest `keep` versions per item (all items, or one). Newer
+    snapshots are always kept, so the current content is never lost."""
+    keep = max(0, req.keep)
+    with tx() as c:
+        if req.item_id is not None:
+            if not c.execute("SELECT 1 FROM items WHERE id = ?", (req.item_id,)).fetchone():
+                raise HTTPException(404, "item not found")
+            cur = c.execute(_COMPACT_ONE, (req.item_id, keep))
+        else:
+            cur = c.execute(_COMPACT_ALL, (keep,))
+        removed = cur.rowcount
+        remaining = c.execute("SELECT COUNT(*) FROM item_versions").fetchone()[0]
+    return CompactResult(removed=removed, remaining=remaining)
+
+
 @router.delete("/items/{item_id}", status_code=204)
 def delete_item(item_id: int) -> None:
     with tx() as c:

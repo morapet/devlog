@@ -9,7 +9,13 @@ reversible.
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from ..backup import hot_backup, list_backups, restore_backup
+from ..backup import (
+    delete_backup,
+    hot_backup,
+    list_backups,
+    prune_backups,
+    restore_backup,
+)
 
 router = APIRouter(prefix="/backups", tags=["backups"])
 
@@ -34,6 +40,30 @@ def create_backup() -> dict:
             return b
     # Fallback (shouldn't happen): report what we can.
     return {"name": path.name, "created_at": None, "tag": "manual", "size": path.stat().st_size}
+
+
+class PruneRequest(BaseModel):
+    keep: int = 10
+
+
+class PruneResult(BaseModel):
+    deleted: list[str]
+    remaining: int
+
+
+@router.post("/prune", response_model=PruneResult)
+def post_prune(req: PruneRequest) -> PruneResult:
+    """Delete all but the newest `keep` backups."""
+    deleted = prune_backups(req.keep)
+    return PruneResult(deleted=deleted, remaining=len(list_backups()))
+
+
+@router.delete("/{name}", status_code=204)
+def delete_one(name: str) -> None:
+    try:
+        delete_backup(name)
+    except ValueError as e:
+        raise HTTPException(404, str(e)) from e
 
 
 class RestoreRequest(BaseModel):

@@ -91,6 +91,28 @@ def resolve_backup(name: str) -> Path:
     return p
 
 
+def delete_backup(name: str) -> None:
+    """Delete one backup file. Raises ValueError if the name is invalid/unknown."""
+    resolve_backup(name).unlink()
+
+
+def prune_backups(keep: int) -> list[str]:
+    """Delete all but the newest `keep` backups. Returns the deleted filenames.
+
+    Newest-first ordering matches list_backups(); the most recent `keep` files
+    are always retained (keep=0 removes everything).
+    """
+    keep = max(0, int(keep))
+    deleted: list[str] = []
+    for b in list_backups()[keep:]:
+        try:
+            (backups_dir() / b["name"]).unlink()
+            deleted.append(b["name"])
+        except OSError:
+            pass
+    return deleted
+
+
 def restore_backup(name: str) -> Path:
     """Replace the live DB with the named backup, returning a pre-restore backup.
 

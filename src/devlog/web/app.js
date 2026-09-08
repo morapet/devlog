@@ -2591,7 +2591,8 @@ function openDataModal() {
         el("div", { class: "min-w-0" },
           el("div", { class: "text-slate-700" }, fmtWhen(b.created_at)),
           el("div", { class: "text-slate-400 text-xs truncate" }, `${b.tag || "backup"} · ${fmtBytes(b.size)}`)),
-        el("button", { class: "ml-auto text-sm text-red-600 hover:text-red-700", onclick: () => doRestore(b) }, "Restore"),
+        el("button", { class: "ml-auto text-sm text-slate-600 hover:text-slate-900", onclick: () => doRestore(b) }, "Restore"),
+        el("button", { class: "text-sm text-red-600 hover:text-red-700", title: "Delete this backup", onclick: () => doDeleteBackup(b) }, "Delete"),
       )));
     } catch (e) { backupList.replaceChildren(el("div", { class: "text-red-600" }, e.message)); }
   };
@@ -2614,6 +2615,48 @@ function openDataModal() {
       close();
       await refreshAll();
       toast(`Restored. Safety backup: ${res.safety_backup}`, 6000);
+    } catch (e) { showErr(e.message); }
+  };
+  const doDeleteBackup = async (b) => {
+    if (!confirm(`Delete the backup from ${fmtWhen(b.created_at)}? This cannot be undone.`)) return;
+    clearErr();
+    try { await api(`/backups/${encodeURIComponent(b.name)}`, { method: "DELETE" }); toast("Backup deleted"); await renderBackups(); }
+    catch (e) { showErr(e.message); }
+  };
+  const keepBackupsInput = el("input", { type: "number", min: "0", value: "10",
+    class: "w-16 border border-slate-300 rounded px-2 py-1 text-sm" });
+  const doPruneBackups = async () => {
+    const keep = Math.max(0, parseInt(keepBackupsInput.value, 10) || 0);
+    if (!confirm(`Keep the newest ${keep} backup(s) and delete the rest?`)) return;
+    clearErr();
+    try {
+      const res = await api("/backups/prune", { method: "POST", body: JSON.stringify({ keep }) });
+      toast(res.deleted.length ? `Deleted ${res.deleted.length} old backup(s)` : "Nothing to delete", 3000);
+      await renderBackups();
+    } catch (e) { showErr(e.message); }
+  };
+
+  // ---- History (version snapshots) ----
+  const historyInfo = el("div", { class: "text-sm text-slate-600 mb-2" }, "Loading…");
+  const renderHistoryStats = async () => {
+    try {
+      const s = await api("/versions/stats");
+      const v = s.total_versions, i = s.items_with_versions;
+      historyInfo.textContent = v === 0
+        ? "No saved versions yet."
+        : `${v} saved version${v === 1 ? "" : "s"} across ${i} item${i === 1 ? "" : "s"}.`;
+    } catch (e) { historyInfo.textContent = e.message; }
+  };
+  const keepHistoryInput = el("input", { type: "number", min: "0", value: "20",
+    class: "w-16 border border-slate-300 rounded px-2 py-1 text-sm" });
+  const doCompact = async () => {
+    const keep = Math.max(0, parseInt(keepHistoryInput.value, 10) || 0);
+    if (!confirm(`Keep only the newest ${keep} version(s) per item and delete older ones?`)) return;
+    clearErr();
+    try {
+      const res = await api("/versions/compact", { method: "POST", body: JSON.stringify({ keep }) });
+      toast(res.removed ? `Removed ${res.removed} old version(s)` : "Nothing to compact", 3000);
+      await renderHistoryStats();
     } catch (e) { showErr(e.message); }
   };
 
@@ -2650,14 +2693,34 @@ function openDataModal() {
         el("div", { class: SECTION_LABEL }, "Backups"),
         el("div", { class: "text-sm text-slate-600 mb-2" },
           "Full snapshots of this backend. Restore rolls everything back to a snapshot."),
-        el("button", { class: BTN_PLAIN, onclick: doCreateBackup }, "＋ Create backup now"),
+        el("div", { class: "flex items-center gap-2 flex-wrap" },
+          el("button", { class: BTN_PLAIN, onclick: doCreateBackup }, "＋ Create backup now"),
+          el("span", { class: "text-sm text-slate-500 ml-1" }, "Keep newest"),
+          keepBackupsInput,
+          el("button", { class: BTN_PLAIN, onclick: doPruneBackups }, "Clean up old"),
+        ),
         backupList,
+      ),
+      el("hr", { class: "border-slate-200" }),
+      // History (version snapshots)
+      el("div", {},
+        el("div", { class: SECTION_LABEL }, "History"),
+        el("div", { class: "text-sm text-slate-600 mb-2" },
+          "Every edit snapshots the previous title/body. Compacting keeps the newest few per item and drops the rest — current content is never removed."),
+        historyInfo,
+        el("div", { class: "flex items-center gap-2 flex-wrap" },
+          el("span", { class: "text-sm text-slate-500" }, "Keep newest"),
+          keepHistoryInput,
+          el("span", { class: "text-sm text-slate-500" }, "per item"),
+          el("button", { class: BTN_PLAIN, onclick: doCompact }, "Compact history"),
+        ),
       ),
     ),
     errBox,
   );
 
   renderBackups();
+  renderHistoryStats();
   overlay.classList.remove("hidden");
 }
 

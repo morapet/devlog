@@ -2,7 +2,7 @@
 
 This file is written for LLM agents (you) that need to drive devlog. There are two ways to talk to it:
 
-- **MCP** — `devlog-mcp` exposes 18 tools over stdio. Use this whenever your client supports MCP. It does the URL plumbing for you and accepts project slugs instead of ids.
+- **MCP** — `devlog-mcp` exposes 20 tools over stdio. Use this whenever your client supports MCP. It does the URL plumbing for you and accepts project slugs instead of ids.
 - **Raw HTTP** — every MCP tool is a thin wrapper around the REST API at `http://127.0.0.1:8765`. Curl/httpx works fine. Use this when MCP isn't available or you want batch / scripted operations.
 
 For full surface details see [SPECIFICATION.md](SPECIFICATION.md). This document is for *operating* the system, not implementing it.
