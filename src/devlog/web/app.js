@@ -2726,6 +2726,23 @@ function openDataModal() {
 
 $("#data-menu") && $("#data-menu").addEventListener("click", openDataModal);
 
+// ---------- light / dark theme ----------
+// The initial theme is applied pre-paint by an inline script in index.html
+// (reads localStorage "theme", else the OS preference). Here we just keep the
+// header button in sync and flip + persist the choice on click.
+function applyTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  try { localStorage.setItem("theme", theme); } catch {}
+  const btn = $("#theme-toggle");
+  if (btn) btn.textContent = theme === "dark" ? "☀ Light" : "🌙 Dark";
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute("content", theme === "dark" ? "#1e1e1e" : "#0f172a");
+}
+applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
+$("#theme-toggle") && $("#theme-toggle").addEventListener("click", () => {
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+});
+
 // ---------- top-header per-item actions (Focus / Share / History) ----------
 // These live in the global header next to Data. They act on the currently
 // selected item and are hidden when nothing is open.
