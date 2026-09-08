@@ -1268,12 +1268,30 @@ function renderEditor(it, bodyVal) {
 
   const wrap = el("div", { class: "edit-split" });
 
+  // The editor is a transparent textarea over a highlight backdrop layer (both
+  // share identical text metrics via CSS) so a preview selection can be painted
+  // behind the source even while the textarea is unfocused.
+  const editorWrap = el("div", { class: "edit-editor-wrap" });
+  const backdrop = el("div", { class: "edit-highlights", "aria-hidden": "true" });
+  backdrop.textContent = bodyVal;
+
   const ta = el("textarea", {
-    class: "edit-editor w-full font-mono text-sm border border-slate-200 rounded p-3 focus:outline-none focus:ring-2 focus:ring-blue-100",
+    class: "edit-editor font-mono text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-100",
     placeholder: it.kind === "link" ? "Annotation… (markdown)" : "Body… (markdown, supports #42, [[title]], ![[drawing:N]])",
-    oninput: (e) => { setDraftQuiet(it.id, "body", e.target.value); updatePreview(e.target.value); },
+    oninput: (e) => {
+      setDraftQuiet(it.id, "body", e.target.value);
+      backdrop.textContent = e.target.value;   // keep the layers aligned
+      clearPreviewHighlight(preview);
+      updatePreview(e.target.value);
+    },
     spellcheck: "false",
   }, bodyVal);
+  ta.addEventListener("scroll", () => { backdrop.scrollTop = ta.scrollTop; backdrop.scrollLeft = ta.scrollLeft; });
+  // Editor selection → highlight the matching rendered blocks.
+  ta.addEventListener("select", () => crossHighlightFromEditor(preview, ta, backdrop));
+  ta.addEventListener("keyup", () => crossHighlightFromEditor(preview, ta, backdrop));
+  ta.addEventListener("mouseup", () => setTimeout(() => crossHighlightFromEditor(preview, ta, backdrop), 0));
+  editorWrap.append(backdrop, ta);
   // Cmd/Ctrl shortcuts: B = bold, I = italic, K = link.
   ta.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
@@ -1316,12 +1334,12 @@ function renderEditor(it, bodyVal) {
   const preview = el("div", { class: "edit-preview prose-body border border-slate-100 rounded p-3 bg-slate-50 overflow-auto", id: "md-preview" });
   renderMarkdownInto(preview, bodyVal);
 
-  // Selecting rendered text mirrors the matching markdown source into the
-  // editor's selection (see mirrorPreviewSelectionToEditor). Deferred a tick so
-  // the browser has finalized the selection by the time we read it.
-  const mirrorSel = () => setTimeout(() => mirrorPreviewSelectionToEditor(preview, ta), 0);
-  preview.addEventListener("mouseup", mirrorSel);
-  preview.addEventListener("dblclick", mirrorSel);
+  // Selecting rendered text highlights the matching markdown behind the editor
+  // (see crossHighlightFromPreview). Deferred a tick so the browser has
+  // finalized the selection by the time we read it.
+  const syncFromPreview = () => setTimeout(() => crossHighlightFromPreview(preview, ta, backdrop), 0);
+  preview.addEventListener("mouseup", syncFromPreview);
+  preview.addEventListener("dblclick", syncFromPreview);
 
   // Click handler: navigate on #N and [[Title]] anchors, edit on drawings.
   preview.addEventListener("click", async (e) => {
@@ -1365,7 +1383,7 @@ function renderEditor(it, bodyVal) {
   const stored = Number(localStorage.getItem("editPreviewWidth") || 0);
   if (stored >= 240 && stored <= 1600) preview.style.width = stored + "px";
   wirePaneSplitter(preview, paneSplit, { key: "editPreviewWidth", def: null, min: 240, max: 1600 });
-  wrap.append(preview, paneSplit, ta);
+  wrap.append(preview, paneSplit, editorWrap);
   outer.append(toolbar, wrap);
   return outer;
 
@@ -1530,20 +1548,29 @@ function renderMarkdown(text) {
   return div.innerHTML;
 }
 
-// ---------- edit mode: mirror a rendered-text selection onto the source ----
-// When you select text in the rendered preview, we map the touched blocks back
-// to their markdown source lines (via the data-src-start/-end attributes the
-// `src_line_map` rule stamps on every block) and mirror that range as the
-// textarea's selection — so the same passage can be copied either as rendered
-// text (from the preview) or as raw markdown (from the editor). Mapping is
-// block-granular: selecting part of a paragraph selects that whole paragraph's
-// source, which is predictable and robust against markdown/rendered mismatch.
+// ---------- edit mode: two-way selection cross-highlight ----------
+// The editor shows the rendered preview and the raw markdown side by side. When
+// you select text in one pane we light up the *matching* region in the other,
+// so you can see the correspondence and copy whichever form you selected. The
+// link is block-granular via the data-src-start/-end attributes stamped on every
+// block by the `src_line_map` rule.
+//   preview → editor: paint the source lines behind the textarea (a plain
+//     textarea can't show a selection while unfocused, so a highlight backdrop
+//     layer sits behind a transparent textarea).
+//   editor → preview: tint the rendered blocks whose source lines are selected.
 
 // Char offset where each 0-based line starts; offs[k] = start of line k.
 function lineStartOffsets(text) {
   const offs = [0];
   for (let i = 0; i < text.length; i++) if (text[i] === "\n") offs.push(i + 1);
   return offs;
+}
+
+// 0-based line number containing char offset `off`.
+function offsetToLine(text, off) {
+  let line = 0;
+  for (let i = 0; i < off && i < text.length; i++) if (text[i] === "\n") line++;
+  return line;
 }
 
 // Nearest ancestor (self included, up to but excluding `root`) that carries a
@@ -1557,13 +1584,37 @@ function nearestMappedBlock(node, root) {
   return null;
 }
 
-function mirrorPreviewSelectionToEditor(preview, ta) {
-  const sel = window.getSelection();
-  if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return;
-  const range = sel.getRangeAt(0);
-  // Only act on selections that live inside this preview.
-  if (!preview.contains(range.commonAncestorContainer)) return;
+// Paint a highlight over [s, e) in the backdrop that sits behind the textarea.
+// Passing a null/empty range clears it. Keeps scroll aligned with the textarea.
+function paintEditorHighlight(ta, backdrop, s, e) {
+  const text = ta.value;
+  if (s == null || e == null || e <= s) {
+    backdrop.textContent = text;
+  } else {
+    backdrop.textContent = "";
+    backdrop.appendChild(document.createTextNode(text.slice(0, s)));
+    const mark = document.createElement("mark");
+    mark.textContent = text.slice(s, e);
+    backdrop.appendChild(mark);
+    backdrop.appendChild(document.createTextNode(text.slice(e)));
+  }
+  backdrop.scrollTop = ta.scrollTop;
+  backdrop.scrollLeft = ta.scrollLeft;
+}
 
+function clearPreviewHighlight(preview) {
+  for (const el of preview.querySelectorAll(".src-highlight")) el.classList.remove("src-highlight");
+}
+
+// Preview selection → highlight the matching markdown lines in the editor.
+function crossHighlightFromPreview(preview, ta, backdrop) {
+  const sel = window.getSelection();
+  if (!sel || sel.rangeCount === 0 || sel.isCollapsed ||
+      !preview.contains(sel.getRangeAt(0).commonAncestorContainer)) {
+    return;
+  }
+  clearPreviewHighlight(preview); // drop any tint left by a prior editor selection
+  const range = sel.getRangeAt(0);
   const startBlock = nearestMappedBlock(range.startContainer, preview);
   const endBlock = nearestMappedBlock(range.endContainer, preview);
   if (!startBlock || !endBlock) return;
@@ -1572,93 +1623,34 @@ function mirrorPreviewSelectionToEditor(preview, ta) {
   const endLineExcl = Number(endBlock.getAttribute("data-src-end"));
   if (!Number.isFinite(startLine) || !Number.isFinite(endLineExcl)) return;
 
-  const text = ta.value;
-  const offs = lineStartOffsets(text);
-  const startCh = offs[Math.max(0, Math.min(startLine, offs.length - 1))];
-  let endCh = endLineExcl < offs.length ? offs[endLineExcl] : text.length;
-  // `data-src-end` is the line AFTER the block, so endCh points at the start of
-  // the next block; trim one trailing newline so we stop at the block's end.
-  if (endCh > startCh && text[endCh - 1] === "\n") endCh--;
-  if (endCh <= startCh) return;
+  const offs = lineStartOffsets(ta.value);
+  const s = offs[Math.max(0, Math.min(startLine, offs.length - 1))];
+  let e = endLineExcl < offs.length ? offs[endLineExcl] : ta.value.length;
+  if (e > s && ta.value[e - 1] === "\n") e--; // stop at block end, not next line
+  paintEditorHighlight(ta, backdrop, s, e);
 
-  try { ta.setSelectionRange(startCh, endCh); } catch { return; }
-  // Reveal the mirrored range in the (possibly scrolled) editor without stealing
-  // focus, so the rendered selection stays intact and copyable too.
+  // Reveal the highlighted lines in the (possibly scrolled) editor.
   const cs = getComputedStyle(ta);
-  const lineH = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) * 1.4) || 18;
+  const lineH = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4 || 18;
   const padTop = parseFloat(cs.paddingTop) || 0;
-  const target = padTop + startLine * lineH - ta.clientHeight / 3;
-  ta.scrollTop = Math.max(0, target);
-
-  // Offer an explicit choice of which form to copy. An unfocused textarea
-  // doesn't paint its selection and a click would reset it, so a small popover
-  // is the reliable way to grab the markdown source without losing it.
-  showCopyPopover(range.getBoundingClientRect(), sel.toString(), text.slice(startCh, endCh));
+  ta.scrollTop = Math.max(0, padTop + startLine * lineH - ta.clientHeight / 3);
+  backdrop.scrollTop = ta.scrollTop;
 }
 
-// Copy `s` to the clipboard, falling back to execCommand for WKWebView / older
-// engines where the async Clipboard API is unavailable.
-async function copyText(s) {
-  try { await navigator.clipboard.writeText(s); return true; } catch {}
-  try {
-    const t = document.createElement("textarea");
-    t.value = s;
-    t.style.cssText = "position:fixed;top:-1000px;opacity:0;";
-    document.body.appendChild(t);
-    t.select();
-    const ok = document.execCommand("copy");
-    t.remove();
-    return ok;
-  } catch { return false; }
+// Editor selection → tint the rendered blocks covering the selected source lines.
+function crossHighlightFromEditor(preview, ta, backdrop) {
+  clearPreviewHighlight(preview);
+  paintEditorHighlight(ta, backdrop, null); // editor is the source pane now
+  const start = ta.selectionStart, end = ta.selectionEnd;
+  if (end <= start) return;
+  const firstLine = offsetToLine(ta.value, start);
+  const lastLine = offsetToLine(ta.value, end - 1);
+  for (const blk of preview.querySelectorAll("[data-src-start]")) {
+    const bs = Number(blk.getAttribute("data-src-start"));
+    const be = Number(blk.getAttribute("data-src-end")); // exclusive
+    if (bs <= lastLine && be > firstLine) blk.classList.add("src-highlight");
+  }
 }
-
-let _copyPopover = null;
-function hideCopyPopover() { if (_copyPopover) { _copyPopover.remove(); _copyPopover = null; } }
-
-// Floating "copy as…" toolbar shown at a preview selection. `rendered` and
-// `markdown` are captured now, so the buttons still copy the right thing even
-// after the selection is cleared by the click.
-function showCopyPopover(rect, rendered, markdown) {
-  hideCopyPopover();
-  if (!rendered) return;
-  const mkBtn = (label, title, payload) =>
-    el("button", {
-      type: "button", title,
-      onclick: async (e) => {
-        e.preventDefault(); e.stopPropagation();
-        const ok = await copyText(payload);
-        toast(ok ? `Copied ${label}` : "Copy failed");
-        hideCopyPopover();
-        const s = window.getSelection(); if (s) s.removeAllRanges();
-      },
-    }, label === "text" ? "⧉ Text" : "⧉ Markdown");
-
-  const pop = el("div", { class: "copy-popover" },
-    mkBtn("text", "Copy the rendered text", rendered),
-    mkBtn("markdown", "Copy the markdown source", markdown),
-  );
-  // Keep the selection alive when a button is pressed (prevents the mousedown
-  // from moving focus / collapsing the selection before the click lands).
-  pop.addEventListener("mousedown", (e) => e.preventDefault());
-  document.body.appendChild(pop);
-
-  const w = pop.offsetWidth, h = pop.offsetHeight;
-  let top = rect.bottom + 6;
-  if (top + h > window.innerHeight - 6) top = Math.max(6, rect.top - h - 6);
-  let left = Math.max(6, Math.min(rect.left, window.innerWidth - w - 6));
-  pop.style.top = top + "px";
-  pop.style.left = left + "px";
-  _copyPopover = pop;
-}
-
-// Dismiss the copy popover when the selection is gone or the view moves.
-document.addEventListener("selectionchange", () => {
-  const s = window.getSelection();
-  if (!s || s.isCollapsed) hideCopyPopover();
-});
-document.addEventListener("scroll", hideCopyPopover, true);
-window.addEventListener("resize", hideCopyPopover);
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideCopyPopover(); });
 
 // ---------- reading-view: table of contents + heading numbering ----------
 
