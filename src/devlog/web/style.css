@@ -671,3 +671,53 @@ html[data-theme="dark"] { color-scheme: dark; background: #1e1e1e; }
 [data-theme="dark"] .edit-editor-wrap .edit-highlights { background: #1c1c1e; }
 [data-theme="dark"] .edit-editor-wrap .edit-highlights mark { background: rgba(10, 132, 255, 0.38); }
 [data-theme="dark"] .edit-preview .src-highlight { background: rgba(10, 132, 255, 0.22); box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.22); }
+
+/* ---- inline 3D model embeds (![[model:N]]) ---- */
+.model-box {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  height: 360px;
+  touch-action: none; /* let OrbitControls own touch gestures */
+}
+.model-box .model-stage { position: absolute; inset: 0; }
+.model-box .model-loading { display: flex; align-items: center; justify-content: center; height: 100%; }
+.model-toolbar {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+  z-index: 2;
+}
+.model-btn {
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(255, 255, 255, 0.85);
+  color: #334155;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.model-btn:hover { background: #fff; border-color: #94a3b8; }
+.model-btn-danger:hover { color: #dc2626; border-color: #fca5a5; }
+.model-hint {
+  position: absolute;
+  bottom: 6px;
+  left: 8px;
+  font-size: 10px;
+  color: #94a3b8;
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+[data-theme="dark"] .model-box { border-color: #48484a !important; }
+[data-theme="dark"] .model-btn {
+  background: rgba(44, 44, 46, 0.85);
+  border-color: rgba(99, 99, 102, 0.6);
+  color: #e5e5ea;
+}
+[data-theme="dark"] .model-btn:hover { background: #2c2c2e; }
+[data-theme="dark"] .model-hint { color: #636366; }

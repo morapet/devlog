@@ -1277,7 +1277,8 @@ function renderEditor(it, bodyVal) {
 
   const ta = el("textarea", {
     class: "edit-editor font-mono text-sm border border-slate-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-100",
-    placeholder: it.kind === "link" ? "Annotation… (markdown)" : "Body… (markdown, supports #42, [[title]], ![[drawing:N]])",
+    "data-item-id": String(it.id),
+    placeholder: it.kind === "link" ? "Annotation… (markdown)" : "Body… (markdown, supports #42, [[title]], ![[drawing:N]], ![[model:N]])",
     oninput: (e) => {
       setDraftQuiet(it.id, "body", e.target.value);
       backdrop.textContent = e.target.value;   // keep the layers aligned
@@ -1329,6 +1330,12 @@ function renderEditor(it, bodyVal) {
       type: "button",
       onclick: () => openDrawingEditor(it, null, ta),
     }, "✎ Drawing"),
+    el("button", {
+      class: "px-2 py-1 rounded border border-slate-300 text-slate-700 hover:bg-slate-100",
+      title: "Insert a 3D model (SolidCraft / STL / OBJ / 3MF)",
+      type: "button",
+      onclick: () => insertModel(it, ta),
+    }, "◼ 3D model"),
   );
 
   const preview = el("div", { class: "edit-preview prose-body border border-slate-100 rounded p-3 bg-slate-50 overflow-auto", id: "md-preview" });
@@ -1918,8 +1925,9 @@ async function rerenderMermaidForTheme() {
   }
 }
 
-// Order matters: drawing token first so it doesn't get partially eaten by the [[Title]] rule.
-const REF_PATTERN = /!\[\[drawing:(\d+)\]\]|(?<!\w)#(\d+)\b|\[\[([^\[\]\n]+?)\]\]/g;
+// Order matters: the embed tokens come first so they don't get partially eaten
+// by the [[Title]] rule. Groups: 1=model id, 2=drawing id, 3=#id, 4=[[title]].
+const REF_PATTERN = /!\[\[model:(\d+)\]\]|!\[\[drawing:(\d+)\]\]|(?<!\w)#(\d+)\b|\[\[([^\[\]\n]+?)\]\]/g;
 
 function renderMarkdownInto(container, text) {
   container.innerHTML = md().render(text || "");
@@ -1953,8 +1961,17 @@ function renderMarkdownInto(container, text) {
     while ((m = REF_PATTERN.exec(raw)) !== null) {
       if (m.index > last) frag.appendChild(document.createTextNode(raw.slice(last, m.index)));
       if (m[1]) {
-        // ![[drawing:N]] — inline drawing (SVG fetched and injected, so markers/styles render correctly)
+        // ![[model:N]] — inline 3D model (live Three.js viewer: rotate/zoom/pan)
         const attId = Number(m[1]);
+        const box = document.createElement("div");
+        box.className = "model-box my-3 border border-slate-200 rounded bg-slate-50 relative overflow-hidden max-w-full";
+        box.dataset.editModel = String(attId);
+        box.innerHTML = '<div class="model-loading text-xs text-slate-400 p-4">Loading 3D model…</div>';
+        loadInlineModel(box, attId);
+        frag.appendChild(box);
+      } else if (m[2]) {
+        // ![[drawing:N]] — inline drawing (SVG fetched and injected, so markers/styles render correctly)
+        const attId = Number(m[2]);
         const box = document.createElement("div");
         box.className = "drawing-box my-3 border border-slate-200 rounded bg-white p-2 inline-block max-w-full cursor-pointer";
         box.title = "Click to edit drawing";
@@ -1962,8 +1979,8 @@ function renderMarkdownInto(container, text) {
         box.innerHTML = '<div class="text-xs text-slate-400 p-2">Loading drawing…</div>';
         loadInlineDrawing(box, attId);
         frag.appendChild(box);
-      } else if (m[2]) {
-        const id = Number(m[2]);
+      } else if (m[3]) {
+        const id = Number(m[3]);
         const title = _titleCache.get(id);
         const a = document.createElement("a");
         a.href = "#";
@@ -1979,8 +1996,8 @@ function renderMarkdownInto(container, text) {
           a.appendChild(span);
         }
         frag.appendChild(a);
-      } else if (m[3]) {
-        const title = m[3];
+      } else if (m[4]) {
+        const title = m[4];
         const a = document.createElement("a");
         a.href = "#";
         a.dataset.refTitle = title;
@@ -2919,6 +2936,7 @@ function applyTheme(theme) {
   // mermaid diagrams in the matching theme and re-tint inline drawings.
   rerenderMermaidForTheme();
   applyDrawingThemes();
+  applyModelThemes();
 }
 applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light");
 $("#theme-toggle") && $("#theme-toggle").addEventListener("click", () => {
@@ -3267,6 +3285,279 @@ function applyDrawingThemes() {
 
 function invalidateDrawingCache(attId) {
   _svgCache.delete(attId);
+}
+
+// ---------- inline 3D model rendering (![[model:N]]) ----------
+// The viewer lives in its own ES module (Three.js) loaded on demand.
+let _modelViewerModule = null;
+function _loadModelViewerModule() {
+  if (!_modelViewerModule) _modelViewerModule = import("/static/model-viewer.js");
+  return _modelViewerModule;
+}
+// Live inline viewers, so a theme toggle can recolor them.
+const _modelViewers = new Map(); // box element -> controller
+
+function _isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
+
+// Recolor every mounted inline model viewer after a theme toggle.
+function applyModelThemes() {
+  const dark = _isDark();
+  for (const [box, ctrl] of _modelViewers) {
+    if (!document.body.contains(box)) { ctrl.dispose(); _modelViewers.delete(box); continue; }
+    try { ctrl.setTheme(dark); } catch {}
+  }
+}
+
+async function loadInlineModel(box, attId) {
+  // A WebGL context per viewer is costly, so mount only when scrolled near.
+  const mount = async () => {
+    if (box.dataset.mounted) return;
+    box.dataset.mounted = "1";
+    try {
+      const { mountViewer } = await _loadModelViewerModule();
+      box.innerHTML = "";
+      const stage = document.createElement("div");
+      stage.className = "model-stage";
+      box.appendChild(stage);
+      const ctrl = await mountViewer(stage, { attId, dark: _isDark() });
+      _modelViewers.set(box, ctrl);
+      _addModelOverlay(box, attId);
+    } catch (e) {
+      box.innerHTML = `<div class="text-xs text-red-600 p-4">Failed to load 3D model #${attId}: ${e.message || e}</div>`;
+    }
+  };
+  if ("IntersectionObserver" in window) {
+    const io = new IntersectionObserver((entries, obs) => {
+      for (const en of entries) if (en.isIntersecting) { obs.disconnect(); mount(); }
+    }, { rootMargin: "200px" });
+    io.observe(box);
+  } else {
+    mount();
+  }
+}
+
+// Floating controls over an inline viewer. Buttons (not the canvas) trigger
+// actions, so dragging to rotate never fires one. Edit mode gets the
+// SolidCraft / delete actions; focus mode just gets expand.
+function _addModelOverlay(box, attId) {
+  const bar = document.createElement("div");
+  bar.className = "model-toolbar";
+  const mk = (label, title, cls = "") => {
+    const b = document.createElement("button");
+    b.className = "model-btn" + (cls ? " " + cls : "");
+    b.type = "button";
+    b.title = title;
+    b.textContent = label;
+    b.addEventListener("pointerdown", (e) => e.stopPropagation()); // don't start an orbit drag
+    return b;
+  };
+  const expand = mk("⛶", "Expand to full-screen view");
+  expand.addEventListener("click", (e) => { e.stopPropagation(); openModelLightbox(attId); });
+  bar.appendChild(expand);
+  if (!state.focusMode) {
+    const open = mk("⤢ SolidCraft", "Open in the native SolidCraft app");
+    open.addEventListener("click", (e) => { e.stopPropagation(); openModelNative(attId); });
+    const del = mk("✕", "Remove this model", "model-btn-danger");
+    del.addEventListener("click", (e) => { e.stopPropagation(); deleteModel(attId); });
+    bar.append(open, del);
+  }
+  box.appendChild(bar);
+  box.appendChild(el("div", { class: "model-hint" }, "drag to rotate · scroll to zoom"));
+}
+
+// Ask the backend to open this model in the native SolidCraft app (same Mac).
+async function openModelNative(attId) {
+  toast("Opening in SolidCraft…");
+  try {
+    const r = await api(`/attachments/${attId}/open-native`, { method: "POST" });
+    toast(r.opened ? "Opened in SolidCraft" : r.reason || "Couldn't open SolidCraft");
+  } catch (e) {
+    toast(e.message || "Couldn't reach SolidCraft");
+  }
+}
+
+// Delete a model attachment and strip its ![[model:N]] token from the body.
+async function deleteModel(attId) {
+  if (!confirm(`Remove 3D model #${attId}?`)) return;
+  try {
+    await api(`/attachments/${attId}`, { method: "DELETE" });
+  } catch (e) { toast(e.message); return; }
+  // Strip the token from the live editor if one is open; else patch the item.
+  const ta = document.querySelector(".edit-editor");
+  const re = new RegExp(`\\n?!\\[\\[model:${attId}\\]\\]\\s*`, "g");
+  if (ta) {
+    const nv = ta.value.replace(re, "");
+    if (nv !== ta.value) {
+      ta.value = nv;
+      const itemId = Number(ta.dataset.itemId || 0);
+      if (itemId) setDraftQuiet(itemId, "body", nv);
+      ta.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+  const preview = document.getElementById("md-preview");
+  if (preview) {
+    for (const box of preview.querySelectorAll(`[data-edit-model="${attId}"]`)) {
+      _modelViewers.get(box)?.dispose();
+      _modelViewers.delete(box);
+      box.remove();
+    }
+  }
+  toast("Model removed");
+}
+
+// Lightbox: large viewer for a model, opened from the expand button.
+async function openModelLightbox(attId) {
+  const overlay = document.createElement("div");
+  overlay.className = "fixed inset-0 z-30 bg-black/80 flex items-center justify-center p-6";
+  const frame = document.createElement("div");
+  frame.className = "bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden";
+  frame.style.width = "min(95vw, 1600px)";
+  frame.style.height = "min(95vh, 1000px)";
+  frame.addEventListener("click", (e) => e.stopPropagation());
+
+  let ctrl = null;
+  const close = () => {
+    ctrl?.dispose();
+    overlay.remove();
+    document.removeEventListener("keydown", onKey);
+  };
+  const onKey = (e) => { if (e.key === "Escape") { e.preventDefault(); close(); } };
+  document.addEventListener("keydown", onKey);
+  overlay.addEventListener("click", close);
+
+  const bar = document.createElement("div");
+  bar.className = "h-10 px-3 border-b border-slate-200 flex items-center gap-2 text-sm shrink-0";
+  bar.innerHTML = `<span class="text-slate-500">3D model #${attId}</span><span class="text-xs text-slate-400">drag to rotate · scroll to zoom · right-drag to pan</span><div class="flex-1"></div>`;
+  const openBtn = document.createElement("button");
+  openBtn.className = "px-2 py-1 text-xs border border-slate-300 rounded text-slate-700 hover:bg-slate-100";
+  openBtn.textContent = "⤢ Open in SolidCraft";
+  openBtn.addEventListener("click", () => openModelNative(attId));
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "text-slate-400 hover:text-slate-800 text-xl leading-none w-6 h-6 ml-2";
+  closeBtn.textContent = "✕";
+  closeBtn.addEventListener("click", close);
+  bar.append(openBtn, closeBtn);
+  frame.appendChild(bar);
+
+  const stage = document.createElement("div");
+  stage.className = "model-stage flex-1 min-h-0 bg-slate-50";
+  frame.appendChild(stage);
+  overlay.appendChild(frame);
+  document.body.appendChild(overlay);
+
+  try {
+    const { mountViewer } = await _loadModelViewerModule();
+    ctrl = await mountViewer(stage, { attId, dark: _isDark() });
+  } catch (e) {
+    stage.innerHTML = `<div class="text-sm text-red-600 p-4">Failed to load model: ${e.message || e}</div>`;
+  }
+}
+
+const MODEL_MESH_EXT = ["stl", "obj", "3mf"];
+
+// Read a File as base64 (no data: prefix).
+function _fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => {
+      const s = String(r.result);
+      const i = s.indexOf(",");
+      resolve(i >= 0 ? s.slice(i + 1) : s);
+    };
+    r.onerror = () => reject(r.error || new Error("read failed"));
+    r.readAsDataURL(file);
+  });
+}
+
+// Upload-a-3D-model dialog: a viewable mesh (required) plus an optional native
+// .solidcraft file for full re-editing. Inserts ![[model:N]] at the cursor.
+function insertModel(item, textarea) {
+  const overlay = $("#modal-overlay");
+  const m = $("#modal");
+  m.replaceChildren();
+
+  const meshInput = el("input", { type: "file", accept: ".stl,.obj,.3mf", class: "block w-full text-sm" });
+  const nativeInput = el("input", { type: "file", accept: ".solidcraft", class: "block w-full text-sm" });
+  const titleInput = el("input", {
+    type: "text", placeholder: "Title (optional)",
+    class: "block w-full text-sm border border-slate-300 rounded px-2 py-1",
+  });
+  const status = el("div", { class: "text-xs text-slate-500 min-h-[1rem]" });
+
+  const insertBtn = el("button", {
+    class: "px-3 py-1.5 text-sm rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50",
+    type: "button",
+  }, "Insert");
+
+  insertBtn.addEventListener("click", async () => {
+    const meshFile = meshInput.files && meshInput.files[0];
+    if (!meshFile) { status.textContent = "Pick a mesh file first."; return; }
+    const ext = (meshFile.name.split(".").pop() || "").toLowerCase();
+    if (!MODEL_MESH_EXT.includes(ext)) {
+      status.textContent = `Mesh must be one of: ${MODEL_MESH_EXT.join(", ")}.`;
+      return;
+    }
+    insertBtn.disabled = true;
+    status.textContent = "Uploading…";
+    try {
+      const payload = {
+        kind: "model",
+        title: titleInput.value.trim() || null,
+        mesh_b64: await _fileToBase64(meshFile),
+        mesh_format: ext,
+      };
+      const nativeFile = nativeInput.files && nativeInput.files[0];
+      if (nativeFile) {
+        payload.native_b64 = await _fileToBase64(nativeFile);
+        payload.native_name = nativeFile.name;
+      }
+      const created = await api(`/items/${item.id}/attachments`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      const insert = `\n![[model:${created.id}]]\n`;
+      const pos = textarea.selectionStart ?? textarea.value.length;
+      const nv = textarea.value.slice(0, pos) + insert + textarea.value.slice(pos);
+      textarea.value = nv;
+      textarea.selectionStart = textarea.selectionEnd = pos + insert.length;
+      setDraftQuiet(item.id, "body", nv);
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      overlay.classList.add("hidden");
+      toast("3D model inserted");
+    } catch (e) {
+      status.textContent = e.message || "Upload failed";
+      insertBtn.disabled = false;
+    }
+  });
+
+  m.append(
+    el("div", { class: "flex items-center gap-2 mb-3" },
+      el("div", { class: "font-semibold" }, "Insert 3D model"),
+      el("button", { class: "ml-auto text-slate-400 hover:text-slate-800", onclick: () => overlay.classList.add("hidden") }, "✕"),
+    ),
+    el("div", { class: "space-y-3" },
+      el("label", { class: "block space-y-1" },
+        el("div", { class: "text-sm font-medium" }, "Mesh to display"),
+        el("div", { class: "text-xs text-slate-500" }, "Export from SolidCraft as STL, OBJ, or 3MF."),
+        meshInput,
+      ),
+      el("label", { class: "block space-y-1" },
+        el("div", { class: "text-sm font-medium" }, "SolidCraft file ", el("span", { class: "text-slate-400 font-normal" }, "(optional)")),
+        el("div", { class: "text-xs text-slate-500" }, "Attach the .solidcraft file so “Open in SolidCraft” gets the editable model."),
+        nativeInput,
+      ),
+      el("label", { class: "block space-y-1" },
+        el("div", { class: "text-sm font-medium" }, "Title ", el("span", { class: "text-slate-400 font-normal" }, "(optional)")),
+        titleInput,
+      ),
+      status,
+      el("div", { class: "flex justify-end gap-2 pt-1" },
+        el("button", { class: "px-3 py-1.5 text-sm text-slate-600 hover:underline", type: "button", onclick: () => overlay.classList.add("hidden") }, "Cancel"),
+        insertBtn,
+      ),
+    ),
+  );
+  overlay.classList.remove("hidden");
 }
 
 // Lightbox: large read-only viewer for a drawing. Opened from focus mode.
