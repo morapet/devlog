@@ -49,7 +49,16 @@ function buildObject(parsed, color) {
   return parsed;
 }
 
-// Center the object at the origin and return its bounding-sphere radius so the
+// SolidCraft (and STL / 3MF generally) is Z-up; Three.js is Y-up. Stand the
+// model upright inside a wrapper so its own transforms stay untouched.
+function zUpToYUp(object) {
+  const wrap = new THREE.Group();
+  object.rotation.x = -Math.PI / 2;
+  wrap.add(object);
+  return wrap;
+}
+
+// Center the object at the origin and return its size + framing radius so the
 // camera can frame it regardless of the model's absolute scale/position.
 function frame(object) {
   const box = new THREE.Box3().setFromObject(object);
@@ -57,7 +66,7 @@ function frame(object) {
   const center = box.getCenter(new THREE.Vector3());
   object.position.sub(center); // recenter at origin
   const radius = Math.max(size.x, size.y, size.z) * 0.5 || 1;
-  return radius;
+  return { size, radius };
 }
 
 /**
@@ -79,8 +88,8 @@ export async function mountViewer(container, opts) {
   const fmt = ct.includes("obj") ? "obj" : ct.includes("3mf") ? "3mf"
             : ct.includes("stl") ? "stl" : (format || "stl");
   const parsed = parseMesh(fmt, buf);
-  const object = buildObject(parsed, theme.model);
-  const radius = frame(object);
+  const object = zUpToYUp(buildObject(parsed, theme.model));
+  const { size, radius } = frame(object);
 
   const scene = new THREE.Scene();
   scene.add(object);
@@ -91,11 +100,16 @@ export async function mountViewer(container, opts) {
   const key = new THREE.DirectionalLight(0xffffff, 1.6);
   scene.add(key);
 
-  // Ground grid for spatial reference, sat just below the model.
-  const grid = new THREE.GridHelper(radius * 6, 24, theme.grid1, theme.grid2);
-  grid.position.y = -radius * 1.05;
-  grid.material.transparent = true;
-  grid.material.opacity = 0.5;
+  // Ground grid for spatial reference, at the model's base. GridHelper bakes
+  // its colors into vertex colors, so a theme change rebuilds it.
+  function makeGrid(t) {
+    const g = new THREE.GridHelper(radius * 6, 24, t.grid1, t.grid2);
+    g.position.y = -size.y / 2 - radius * 0.01;
+    g.material.transparent = true;
+    g.material.opacity = 0.5;
+    return g;
+  }
+  let grid = makeGrid(theme);
   scene.add(grid);
 
   const camera = new THREE.PerspectiveCamera(45, 1, radius * 0.05, radius * 100);
@@ -166,9 +180,12 @@ export async function mountViewer(container, opts) {
       dark = !!nextDark;
       theme = dark ? THEME.dark : THEME.light;
       renderer.setClearColor(theme.bg, 1);
-      grid.material.color.setHex(theme.grid1);
-      object.traverse?.((n) => { if (n.isMesh && n.material?.color) n.material.color.setHex(theme.model); });
-      if (object.isMesh && object.material?.color) object.material.color.setHex(theme.model);
+      scene.remove(grid);
+      grid.geometry.dispose();
+      grid.material.dispose();
+      grid = makeGrid(theme);
+      scene.add(grid);
+      object.traverse((n) => { if (n.isMesh && n.material?.color) n.material.color.setHex(theme.model); });
       needsRender = true;
     },
     resize: sizeToContainer,

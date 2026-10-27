@@ -1930,6 +1930,15 @@ async function rerenderMermaidForTheme() {
 const REF_PATTERN = /!\[\[model:(\d+)\]\]|!\[\[drawing:(\d+)\]\]|(?<!\w)#(\d+)\b|\[\[([^\[\]\n]+?)\]\]/g;
 
 function renderMarkdownInto(container, text) {
+  // The edit preview re-renders on every keystroke. Keep already-rendered 3D
+  // model boxes so their WebGL viewer (and camera) survives instead of a new
+  // context being created each time; boxes no longer referenced are disposed.
+  const reusableModels = new Map(); // attId -> [box]
+  for (const b of container.querySelectorAll(".model-box[data-edit-model]")) {
+    const id = b.dataset.editModel;
+    if (!reusableModels.has(id)) reusableModels.set(id, []);
+    reusableModels.get(id).push(b);
+  }
   container.innerHTML = md().render(text || "");
   // Render any ```mermaid blocks (async, but we don't block — they'll appear shortly).
   processMermaidBlocks(container);
@@ -1963,12 +1972,17 @@ function renderMarkdownInto(container, text) {
       if (m[1]) {
         // ![[model:N]] — inline 3D model (live Three.js viewer: rotate/zoom/pan)
         const attId = Number(m[1]);
-        const box = document.createElement("div");
-        box.className = "model-box my-3 border border-slate-200 rounded bg-slate-50 relative overflow-hidden max-w-full";
-        box.dataset.editModel = String(attId);
-        box.innerHTML = '<div class="model-loading text-xs text-slate-400 p-4">Loading 3D model…</div>';
-        loadInlineModel(box, attId);
-        frag.appendChild(box);
+        const prev = reusableModels.get(String(attId))?.shift();
+        if (prev) {
+          frag.appendChild(prev);
+        } else {
+          const box = document.createElement("div");
+          box.className = "model-box my-3 border border-slate-200 rounded bg-slate-50 relative overflow-hidden max-w-full";
+          box.dataset.editModel = String(attId);
+          box.innerHTML = '<div class="model-loading text-xs text-slate-400 p-4">Loading 3D model…</div>';
+          loadInlineModel(box, attId);
+          frag.appendChild(box);
+        }
       } else if (m[2]) {
         // ![[drawing:N]] — inline drawing (SVG fetched and injected, so markers/styles render correctly)
         const attId = Number(m[2]);
@@ -2009,6 +2023,10 @@ function renderMarkdownInto(container, text) {
     }
     if (last < raw.length) frag.appendChild(document.createTextNode(raw.slice(last)));
     tn.parentNode.replaceChild(frag, tn);
+  }
+  // Model boxes whose token is gone from the text: release their viewer.
+  for (const boxes of reusableModels.values()) {
+    for (const b of boxes) disposeModelBox(b);
   }
 }
 
@@ -2925,6 +2943,10 @@ $("#data-menu") && $("#data-menu").addEventListener("click", openDataModal);
 // The initial theme is applied pre-paint by an inline script in index.html
 // (reads localStorage "theme", else the OS preference). Here we just keep the
 // header button in sync and flip + persist the choice on click.
+// Live inline 3D model viewers, so a theme toggle can recolor them. Declared
+// here, ahead of the load-time applyTheme() call below, to avoid the TDZ.
+const _modelViewers = new Map(); // box element -> controller
+
 function applyTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   try { localStorage.setItem("theme", theme); } catch {}
@@ -3291,19 +3313,34 @@ function invalidateDrawingCache(attId) {
 // The viewer lives in its own ES module (Three.js) loaded on demand.
 let _modelViewerModule = null;
 function _loadModelViewerModule() {
-  if (!_modelViewerModule) _modelViewerModule = import("/static/model-viewer.js");
+  // Keep the ?v= in step with index.html so the cache-first service worker
+  // picks up viewer changes.
+  if (!_modelViewerModule) _modelViewerModule = import("/static/model-viewer.js?v=29");
   return _modelViewerModule;
 }
-// Live inline viewers, so a theme toggle can recolor them.
-const _modelViewers = new Map(); // box element -> controller
 
 function _isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
 
+// Release a model box's WebGL viewer (and stop a pending mount).
+function disposeModelBox(box) {
+  box.dataset.disposed = "1";
+  _modelViewers.get(box)?.dispose();
+  _modelViewers.delete(box);
+}
+
+// Dispose viewers whose box has left the page (item switch, edit ↔ focus
+// re-render) — each holds a WebGL context and the browser caps those.
+function pruneModelViewers() {
+  for (const box of [..._modelViewers.keys()]) {
+    if (!document.body.contains(box)) disposeModelBox(box);
+  }
+}
+
 // Recolor every mounted inline model viewer after a theme toggle.
 function applyModelThemes() {
+  pruneModelViewers();
   const dark = _isDark();
-  for (const [box, ctrl] of _modelViewers) {
-    if (!document.body.contains(box)) { ctrl.dispose(); _modelViewers.delete(box); continue; }
+  for (const ctrl of _modelViewers.values()) {
     try { ctrl.setTheme(dark); } catch {}
   }
 }
@@ -3311,8 +3348,9 @@ function applyModelThemes() {
 async function loadInlineModel(box, attId) {
   // A WebGL context per viewer is costly, so mount only when scrolled near.
   const mount = async () => {
-    if (box.dataset.mounted) return;
+    if (box.dataset.mounted || box.dataset.disposed) return;
     box.dataset.mounted = "1";
+    pruneModelViewers();
     try {
       const { mountViewer } = await _loadModelViewerModule();
       box.innerHTML = "";
@@ -3320,6 +3358,8 @@ async function loadInlineModel(box, attId) {
       stage.className = "model-stage";
       box.appendChild(stage);
       const ctrl = await mountViewer(stage, { attId, dark: _isDark() });
+      // Dropped while the mesh was loading: don't keep a context for it.
+      if (box.dataset.disposed || !document.body.contains(box)) { ctrl.dispose(); return; }
       _modelViewers.set(box, ctrl);
       _addModelOverlay(box, attId);
     } catch (e) {
@@ -3397,8 +3437,7 @@ async function deleteModel(attId) {
   const preview = document.getElementById("md-preview");
   if (preview) {
     for (const box of preview.querySelectorAll(`[data-edit-model="${attId}"]`)) {
-      _modelViewers.get(box)?.dispose();
-      _modelViewers.delete(box);
+      disposeModelBox(box);
       box.remove();
     }
   }
