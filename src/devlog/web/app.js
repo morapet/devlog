@@ -3315,7 +3315,7 @@ let _modelViewerModule = null;
 function _loadModelViewerModule() {
   // Keep the ?v= in step with index.html so the cache-first service worker
   // picks up viewer changes.
-  if (!_modelViewerModule) _modelViewerModule = import("/static/model-viewer.js?v=29");
+  if (!_modelViewerModule) _modelViewerModule = import("/static/model-viewer.js?v=30");
   return _modelViewerModule;
 }
 

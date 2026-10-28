@@ -31,18 +31,36 @@ function parseMesh(format, buf) {
   return geo;
 }
 
-function buildObject(parsed, color) {
+function buildObject(parsed, color, fmt) {
   const material = new THREE.MeshStandardMaterial({
     color, metalness: 0.1, roughness: 0.65, flatShading: false,
   });
+  material.userData.themed = true; // setTheme recolors only these
   // STLLoader returns a BufferGeometry; OBJ / 3MF return an Object3D tree.
   if (parsed.isBufferGeometry) {
     return new THREE.Mesh(parsed, material);
   }
-  // Give any un-materialed meshes in the tree our neutral material so the
-  // whole model is uniformly shaded (SolidCraft meshes rarely carry one).
   parsed.traverse((n) => {
-    if (n.isMesh && (!n.material || Array.isArray(n.material) === false && !n.material.isMeshStandardMaterial)) {
+    if (!n.isMesh) return;
+    // 3MFLoader emits position-only geometry (it relies on flatShading), so
+    // a lit material without normals renders solid black.
+    if (!n.geometry.attributes.normal) n.geometry.computeVertexNormals();
+    const src = n.material;
+    // 3MF carries per-part display colors (SolidCraft writes basematerials):
+    // keep them, as a lit Standard material with the file's opacity.
+    if (fmt === "3mf" && src && !Array.isArray(src) && src.color) {
+      const m = new THREE.MeshStandardMaterial({
+        color: src.color, metalness: 0.1, roughness: 0.65, flatShading: true,
+        transparent: src.transparent, opacity: src.opacity,
+        depthWrite: !src.transparent, side: src.transparent ? THREE.DoubleSide : THREE.FrontSide,
+      });
+      src.dispose();
+      n.material = m;
+      return;
+    }
+    // Otherwise give un-materialed meshes our neutral material so the whole
+    // model is uniformly shaded.
+    if (!src || (!Array.isArray(src) && !src.isMeshStandardMaterial)) {
       n.material = material;
     }
   });
@@ -88,7 +106,7 @@ export async function mountViewer(container, opts) {
   const fmt = ct.includes("obj") ? "obj" : ct.includes("3mf") ? "3mf"
             : ct.includes("stl") ? "stl" : (format || "stl");
   const parsed = parseMesh(fmt, buf);
-  const object = zUpToYUp(buildObject(parsed, theme.model));
+  const object = zUpToYUp(buildObject(parsed, theme.model, fmt));
   const { size, radius } = frame(object);
 
   const scene = new THREE.Scene();
@@ -185,7 +203,7 @@ export async function mountViewer(container, opts) {
       grid.material.dispose();
       grid = makeGrid(theme);
       scene.add(grid);
-      object.traverse((n) => { if (n.isMesh && n.material?.color) n.material.color.setHex(theme.model); });
+      object.traverse((n) => { if (n.isMesh && n.material?.userData.themed) n.material.color.setHex(theme.model); });
       needsRender = true;
     },
     resize: sizeToContainer,
