@@ -199,6 +199,16 @@ def _migrate(c: sqlite3.Connection) -> None:
     if "estimate_minutes" not in cols:
         c.execute("ALTER TABLE items ADD COLUMN estimate_minutes INTEGER")
 
+    # 3D model attachments (kind='model'): a viewable mesh plus an optional
+    # native SolidCraft file, both base64-encoded so they ride the JSON
+    # export/backup path exactly like a drawing's text payloads.
+    att_cols = {r["name"] for r in c.execute("PRAGMA table_info(attachments)").fetchall()}
+    if "mesh_b64" not in att_cols:
+        c.execute("ALTER TABLE attachments ADD COLUMN mesh_b64 TEXT")
+        c.execute("ALTER TABLE attachments ADD COLUMN mesh_format TEXT")
+        c.execute("ALTER TABLE attachments ADD COLUMN native_b64 TEXT")
+        c.execute("ALTER TABLE attachments ADD COLUMN native_name TEXT")
+
     project_cols = {r["name"] for r in c.execute("PRAGMA table_info(projects)").fetchall()}
     if "parent_id" not in project_cols:
         # SQLite ALTER TABLE can't add a FK, but the API enforces it.

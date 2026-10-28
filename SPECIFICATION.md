@@ -127,7 +127,14 @@ Index `(item_id, saved_at DESC)`.
 | title | TEXT nullable |
 | data_xml | TEXT (drawio mxfile XML — used for re-edit) |
 | data_svg | TEXT (rendered SVG — served inline) |
+| mesh_b64 | TEXT (base64 of the viewable mesh — `kind='model'`) |
+| mesh_format | TEXT (`stl` / `obj` / `3mf` — `kind='model'`) |
+| native_b64 | TEXT (base64 of the native `.solidcraft` file, optional — `kind='model'`) |
+| native_name | TEXT (original native filename — `kind='model'`) |
 | created_at / updated_at | ISO UTC |
+
+The model payloads are base64 **text** (not BLOBs) so attachments still ride the
+JSON export / backup / portability path unchanged.
 
 ### 3.7 settings (key/value)
 
@@ -202,10 +209,12 @@ On create with `status: 'doing'`, the server first runs the single-doing protoco
 | Method | Path |
 |---|---|
 | GET | `/items/{id}/attachments` (summary, omits bulky XML) |
-| POST | `/items/{id}/attachments` (body: `{kind, title, data_xml, data_svg}`) |
-| GET | `/attachments/{aid}` (full XML + SVG) |
+| POST | `/items/{id}/attachments` (body: `{kind, title, data_xml, data_svg}` for drawings; `{kind:"model", title, mesh_b64, mesh_format, native_b64?, native_name?}` for models) |
+| GET | `/attachments/{aid}` (full payload) |
 | GET | `/attachments/{aid}/svg` (raw `Content-Type: image/svg+xml`) |
-| PATCH | `/attachments/{aid}` (subset of `{title, data_xml, data_svg}`) |
+| GET | `/attachments/{aid}/mesh` (raw mesh bytes, `Content-Type: model/stl\|obj\|3mf`) |
+| POST | `/attachments/{aid}/open-native` (macOS: `open -a SolidCraft` on the native/mesh file; returns `{opened, reason}`) |
+| PATCH | `/attachments/{aid}` (subset of `{title, data_xml, data_svg, mesh_b64, mesh_format, native_b64, native_name}`) |
 | DELETE | `/attachments/{aid}` |
 
 ### 4.6 Search
@@ -417,7 +426,9 @@ Pipeline:
    - `markdown-it-anchor` — auto-add `id` to headings
 3. Custom admonition rule (MkDocs `!!!` syntax) — emits `<div class="admonition <type>"><p class="admonition-title">…</p>…</div>` with **inlined** background/border colors so external CSS load order can never break it.
 4. Code-fence highlighter: `mermaid` fences flagged for post-processing; other languages run through highlight.js (GitHub theme).
-5. After markdown→HTML, a DOM walker replaces text nodes outside `<code>/<pre>/<a>` containing `#N`, `[[Title]]`, or `![[drawing:N]]` with real `<a>` / drawing-host elements.
+5. After markdown→HTML, a DOM walker replaces text nodes outside `<code>/<pre>/<a>` containing `#N`, `[[Title]]`, `![[drawing:N]]`, or `![[model:N]]` with real `<a>` / drawing-host / model-viewer elements.
+
+**3D models** — markdown body recognises `![[model:N]]`. In the preview, each is replaced by a live WebGL viewer (Three.js, vendored under `/static/vendor/three`, loaded on demand from `/static/model-viewer.js` via the `importmap` in `index.html`). The viewer lazy-mounts when scrolled into view (one WebGL context each), fetches the mesh from `/attachments/N/mesh`, and supports orbit / zoom / pan. Overlay buttons (not the canvas) drive actions so dragging never triggers one: focus mode shows **Expand** (full-screen lightbox); edit mode also shows **Open in SolidCraft** (POST `/attachments/N/open-native`) and delete. The scene chrome (background, grid, model tint) follows the app's light/dark theme.
 6. Async pass: `processMermaidBlocks` finds every `<pre class="mermaid-source">` and calls `mermaid.render()` to swap in an `<svg>`.
 
 Reference titles are cached client-side and the preview re-renders once they arrive, so `#42` becomes `#42 Fix login bug` in gray after the first fetch.

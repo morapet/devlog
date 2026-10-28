@@ -467,17 +467,61 @@ def update_attachment(
     data_xml: Optional[str] = None,
     data_svg: Optional[str] = None,
     title: Optional[str] = None,
+    mesh_b64: Optional[str] = None,
+    mesh_format: Optional[str] = None,
+    native_b64: Optional[str] = None,
+    native_name: Optional[str] = None,
 ) -> dict:
-    """Update a drawing's XML, SVG, or title. Pass only the fields you want changed."""
-    payload = {k: v for k, v in {"data_xml": data_xml, "data_svg": data_svg, "title": title}.items() if v is not None}
+    """Update an attachment. Pass only the fields you want changed.
+
+    Drawings use data_xml / data_svg; 3D models (kind='model') use mesh_b64 /
+    mesh_format and the optional native_b64 / native_name.
+    """
+    payload = {k: v for k, v in {
+        "data_xml": data_xml, "data_svg": data_svg, "title": title,
+        "mesh_b64": mesh_b64, "mesh_format": mesh_format,
+        "native_b64": native_b64, "native_name": native_name,
+    }.items() if v is not None}
     return _req("PATCH", f"/attachments/{attachment_id}", json=payload)
 
 
 @mcp.tool()
+def create_model_attachment(
+    item_id: int,
+    mesh_b64: str,
+    mesh_format: str,
+    title: Optional[str] = None,
+    native_b64: Optional[str] = None,
+    native_name: Optional[str] = None,
+) -> dict:
+    """Attach a 3D model (kind='model') to an item. Returns the new attachment.
+
+    - mesh_b64: base64 of the viewable mesh. This is what the in-browser viewer
+      renders (rotate / zoom / pan).
+    - mesh_format: one of 'stl', 'obj', '3mf'.
+    - native_b64 / native_name (optional): base64 + filename of the native
+      SolidCraft '.solidcraft' file, so the UI's "Open in SolidCraft" launches
+      the fully editable model instead of a static mesh import.
+
+    After creating attachment id N, embed it in the item's body via:
+      update_note(item_id, body="... ![[model:N]] ...")
+    (or update_task / update_link as appropriate).
+    """
+    return _req("POST", f"/items/{item_id}/attachments", json={
+        "kind": "model",
+        "title": title,
+        "mesh_b64": mesh_b64,
+        "mesh_format": mesh_format,
+        "native_b64": native_b64,
+        "native_name": native_name,
+    })
+
+
+@mcp.tool()
 def delete_attachment(attachment_id: int) -> dict:
-    """Delete an attachment. Note: the ![[drawing:N]] token in any item body is NOT
-    automatically removed — clean it up via update_note / update_task / update_link
-    if needed."""
+    """Delete an attachment. Note: the ![[drawing:N]] / ![[model:N]] token in any
+    item body is NOT automatically removed — clean it up via update_note /
+    update_task / update_link if needed."""
     return _req("DELETE", f"/attachments/{attachment_id}")
 
 

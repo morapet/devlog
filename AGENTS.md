@@ -200,6 +200,7 @@ Every task/note/link body is markdown. The renderer recognises three special tok
 | `#42` | Reference to item id 42. Title is auto-decorated in preview. |
 | `[[Some Title]]` | Reference resolved by title (same project first, then global). |
 | `![[drawing:N]]` | Inline drawio drawing N (see §5). |
+| `![[model:N]]` | Inline 3D model N — live WebGL viewer, rotate/zoom/pan (see §5.6). |
 
 After any save, the backend re-parses the body and rewrites the outbound edges. **Backlinks** on item 42 will automatically include anything that wrote `#42`. As an LLM you just write the tokens and let the system do the graph work.
 
@@ -436,6 +437,38 @@ If you want drawings to match the rest of the UI:
 | muted | `#f1f5f9` | `#94a3b8` | `#334155` |
 
 Edges: `#475569` stroke, width 1.5, classic arrow marker.
+
+### 5.6 3D models (`kind='model'`)
+
+A model attachment stores a **viewable mesh** plus an **optional native file**,
+both base64-encoded (text, so they ride the JSON export/backup path like a
+drawing):
+
+- `mesh_b64` + `mesh_format` — the mesh the in-browser Three.js viewer renders
+  (rotate / zoom / pan). `mesh_format` is one of `stl`, `obj`, `3mf`. SolidCraft
+  exports all three; STL is the simplest.
+- `native_b64` + `native_name` — the native SolidCraft `.solidcraft` file
+  (optional). With it, the UI's "Open in SolidCraft" launches the fully
+  **editable** model; without it, only the mesh is available and SolidCraft
+  imports it as a static body.
+
+**MCP:**
+```
+create_model_attachment(item_id, mesh_b64, mesh_format="stl",
+                        title="Bracket v3",
+                        native_b64=<optional>, native_name="bracket.solidcraft")
+update_attachment(attachment_id, mesh_b64=..., mesh_format="stl")   # replace the mesh
+```
+
+**HTTP:** POST `/items/{id}/attachments` with
+`{"kind":"model","mesh_b64":"...","mesh_format":"stl","native_b64":"...","native_name":"x.solidcraft"}`.
+Fetch the raw mesh at `GET /attachments/{aid}/mesh`. `POST /attachments/{aid}/open-native`
+opens it in SolidCraft on the local Mac (`open -a SolidCraft`).
+
+Then embed in a body: `![[model:N]]` (independent per token, like drawings).
+
+There is no headless SolidCraft→mesh conversion: export the mesh from
+SolidCraft once and upload it; re-editing happens in the native app.
 
 ---
 
