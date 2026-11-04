@@ -1,0 +1,66 @@
+# Continuous deploy to Google Cloud Run.
+#
+# Runs on every push to main (and manually via the Actions tab), but only
+# when the repo variable GCP_PROJECT is set — so forks and checkouts without
+# GCP configured skip it silently.
+#
+# One-time GCP + GitHub setup: see "CI/CD from GitHub Actions" in
+# deploy/cloud-run/README.md. In short —
+#   repo Variables: GCP_PROJECT, GCP_REGION (optional), DEVLOG_BUCKET
+#   repo Secrets:   GCP_SA_KEY (deployer service-account JSON), DEVLOG_PASSWORD
+#
+# Cloud Run can only pull from Artifact Registry, not GHCR, so this workflow
+# builds the image itself (base from source + the Litestream layer) and
+# pushes it there — no dependency on the GHCR publish workflow's timing.
+
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-cloud-run
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: vars.GCP_PROJECT != ''
+    runs-on: ubuntu-latest
+    env:
+      REGION: ${{ vars.GCP_REGION != '' && vars.GCP_REGION || 'europe-west1' }}
+      SERVICE: devlog
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure docker for Artifact Registry
+        run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+      - name: Build image (base from source + Litestream layer)
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT }}/devlog/devlog:${{ github.sha }}"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+          docker build -t devlog-base .
+          docker build deploy/cloud-run --build-arg BASE_IMAGE=devlog-base -t "$IMAGE"
+          docker push "$IMAGE"
+
+      - name: Deploy
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --image "$IMAGE" \
+            --project "${{ vars.GCP_PROJECT }}" \
+            --region "$REGION" \
+            --allow-unauthenticated \
+            --max-instances 1 \
+            --memory 512Mi \
+            --set-env-vars "LITESTREAM_REPLICA_URL=gcs://${{ vars.DEVLOG_BUCKET }}/devlog,DEVLOG_PASSWORD=${{ secrets.DEVLOG_PASSWORD }}"
+
+      - name: Show URL
+        run: gcloud run services describe "$SERVICE" --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --format 'value(status.url)'
