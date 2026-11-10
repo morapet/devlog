@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 
 from .api.attachments import router as attachments_router
 from .api.auth import router as auth_router
@@ -27,13 +28,16 @@ app = FastAPI(title="devlog", version="0.1.0")
 
 @app.middleware("http")
 async def _auth_gate(request: Request, call_next):
-    from .auth import request_allowed
+    from .auth import auth_mode, request_allowed
 
     host = request.client.host if request.client else None
-    if request_allowed(
-        path=request.url.path, client_host=host,
-        cookies=request.cookies, headers=request.headers,
-    ):
+    kwargs = dict(path=request.url.path, client_host=host, cookies=request.cookies, headers=request.headers)
+    if auth_mode() == "private-vpn":
+        # May shell out to tailscaled on a cache miss; keep the event loop free.
+        allowed = await run_in_threadpool(lambda: request_allowed(**kwargs))
+    else:
+        allowed = request_allowed(**kwargs)
+    if allowed:
         return await call_next(request)
     return JSONResponse({"detail": "authentication required"}, status_code=401)
 

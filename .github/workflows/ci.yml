@@ -31,6 +31,8 @@ jobs:
           enable-cache: true
       - name: Sync deps
         run: uv sync --frozen
+      - name: Unit tests
+        run: uv run --with pytest pytest tests -q
       - name: Start backend in background
         run: |
           DEVLOG_DATA_DIR=$RUNNER_TEMP/devlog-data uv run devlog > server.log 2>&1 &

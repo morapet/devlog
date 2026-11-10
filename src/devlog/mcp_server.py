@@ -114,7 +114,8 @@ mcp = FastMCP("devlog", instructions=INSTRUCTIONS)
 # A single shared client. httpx.Client is thread-safe for use across requests.
 # On loopback the backend trusts us without a secret (DEVLOG_AUTH=auto). For
 # remote backends, or DEVLOG_AUTH=always, set DEVLOG_AUTH_TOKEN to the shared
-# secret (see `devlog token`) so the MCP server can authenticate.
+# secret (see `devlog --print-token`) so the MCP server can authenticate. A
+# private-vpn backend needs no token when this machine is a trusted VPN peer.
 _headers = {}
 _token = os.environ.get("DEVLOG_AUTH_TOKEN", "")
 if _token:

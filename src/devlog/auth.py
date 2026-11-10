@@ -10,9 +10,11 @@ The secret is a random token, taken from DEVLOG_AUTH_TOKEN or auto-generated
 once into <data_dir>/auth.token (chmod 600). Retrieve it with `devlog --print-token`.
 
 Modes (env DEVLOG_AUTH):
-    auto   (default) trust loopback, require the secret for remote requests
-    always require the secret even on loopback
-    off    disable auth entirely
+    auto         (default) trust loopback, require the secret for remote requests
+    private-vpn  like auto, and also trust VPN peers by identity (see vpn.py);
+                 anything else still needs the secret
+    always       require the secret even on loopback
+    off          disable auth entirely
 """
 
 import hashlib
@@ -23,6 +25,7 @@ import time
 from pathlib import Path
 
 from .config import data_dir
+from .vpn import vpn_allowed
 
 SESSION_COOKIE = "devlog_session"
 SESSION_TTL = 30 * 24 * 3600  # 30 days
@@ -36,8 +39,8 @@ _secret_cache: str | None = None
 
 
 def auth_mode() -> str:
-    m = os.environ.get("DEVLOG_AUTH", "auto").lower()
-    return m if m in ("auto", "always", "off") else "auto"
+    m = os.environ.get("DEVLOG_AUTH", "auto").lower().replace("_", "-")
+    return m if m in ("auto", "always", "off", "private-vpn") else "auto"
 
 
 def _token_file() -> Path:
@@ -119,6 +122,9 @@ def request_allowed(*, path: str, client_host: str | None, cookies, headers) -> 
         return True
     if check_token(headers.get("x-devlog-token")):
         return True
+    # Last, because it may ask tailscaled (cached) who the peer is.
+    if mode == "private-vpn" and vpn_allowed(client_host):
+        return True
     return False
 
 
@@ -128,5 +134,7 @@ def auth_required_for(client_host: str | None) -> bool:
     if mode == "off":
         return False
     if mode != "always" and is_loopback(client_host):
+        return False
+    if mode == "private-vpn" and vpn_allowed(client_host):
         return False
     return True

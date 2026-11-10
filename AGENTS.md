@@ -35,7 +35,7 @@ curl -s http://127.0.0.1:8765/health
 # {"ok":true}
 ```
 
-All endpoints are JSON in / JSON out, localhost only by default. Override the base URL with `DEVLOG_BASE_URL`. If the backend requires auth (a remote host, or `DEVLOG_AUTH=always`), send `Authorization: Bearer <token>` on every request — `devlog-mcp` does this automatically when `DEVLOG_AUTH_TOKEN` is set in its environment.
+All endpoints are JSON in / JSON out, localhost only by default. Override the base URL with `DEVLOG_BASE_URL`. If the backend requires auth (a remote host, or `DEVLOG_AUTH=always`), send `Authorization: Bearer <token>` on every request — `devlog-mcp` does this automatically when `DEVLOG_AUTH_TOKEN` is set in its environment. A backend in `DEVLOG_AUTH=private-vpn` mode needs no token from a trusted VPN device.
 
 ---
 

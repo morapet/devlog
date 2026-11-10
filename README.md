@@ -136,6 +136,21 @@ The web UI is a mobile PWA; run the backend anywhere your phone can reach it and
 </details>
 
 <details>
+<summary><b>Use it over Tailscale / a private VPN</b> — no token prompt</summary>
+
+In `private-vpn` mode devlog asks the local Tailscale daemon who each connection belongs to and lets your own devices straight in — no token, no login screen, for the web UI, the desktop apps and a remote `devlog-mcp` alike:
+
+```bash
+DEVLOG_AUTH=private-vpn DEVLOG_VPN_USERS=you@github devlog --host 0.0.0.0
+```
+
+Your login is the name shown by `tailscale whois $(tailscale ip -4)`. Tagged devices have no user; list their tag in `DEVLOG_VPN_TAGS` instead. For a VPN without identities (plain WireGuard, ZeroTier) trust a network range with `DEVLOG_VPN_CIDRS=10.8.0.0/24` — every device on it gets in, so keep it tight. Requests from anywhere else still need the token, and Tailscale Funnel traffic carries no identity, so it is always challenged.
+
+The backend needs the `tailscale` CLI on its `PATH` (or `DEVLOG_TAILSCALE_BIN`), or the daemon socket: in Docker mount `/var/run/tailscale/tailscaled.sock` into the container (override the path with `DEVLOG_TAILSCALE_SOCKET`).
+
+</details>
+
+<details>
 <summary><b>Host it on the internet</b> — HTTPS + login</summary>
 
 Devlog ships built-in auth: loopback is trusted, remote devices need a shared secret (`DEVLOG_AUTH_TOKEN`, or auto-generated to `<data_dir>/auth.token` — print with `devlog --print-token`). `DEVLOG_AUTH=always` requires it everywhere; `DEVLOG_AUTH=off` disables it (never do that on an open port). The web UI prompts once and keeps a 30-day cookie; API clients send `Authorization: Bearer <token>`. Ready-made setups, all serving the PWA with offline support:
@@ -174,8 +189,11 @@ Override the backend URL with `DEVLOG_BASE_URL`. Full tool list: [src/devlog/mcp
 | `DEVLOG_PORT` | `8765` | Bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | Where the SQLite file lives |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | Used by `devlog-mcp` to reach the backend |
-| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback, requires the token remotely; `always` everywhere; `off` disables |
+| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback, requires the token remotely; `private-vpn` also trusts your VPN devices; `always` everywhere; `off` disables |
 | `DEVLOG_AUTH_TOKEN` | *(auto-generated)* | Shared secret for remote access; `devlog --print-token` |
+| `DEVLOG_VPN_USERS` | *(empty)* | `private-vpn` mode: Tailscale logins trusted without a token, comma-separated (e.g. `you@github`) |
+| `DEVLOG_VPN_TAGS` | *(empty)* | `private-vpn` mode: Tailscale tags trusted without a token (e.g. `tag:laptop`) |
+| `DEVLOG_VPN_CIDRS` | *(empty)* | `private-vpn` mode: networks trusted without a token, for VPNs with no identity (e.g. `10.8.0.0/24`) |
 
 <details>
 <summary>Make targets &amp; project layout</summary>
