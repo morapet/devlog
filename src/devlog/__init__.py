@@ -43,4 +43,11 @@ def main() -> None:
 
     acquire_datadir_lock(port=args.port)
 
+    from .auth import auth_mode
+
+    if auth_mode() == "private-vpn":
+        from .vpn import describe
+
+        print(f"[auth] {describe()}")
+
     uvicorn.run("devlog.app:app", host=args.host, port=args.port, reload=False)

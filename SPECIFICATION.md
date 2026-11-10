@@ -271,7 +271,7 @@ Response:
 
 ### 4.11 Auth (shared secret, single user)
 
-Controlled by `DEVLOG_AUTH`: `auto` (default) trusts loopback and requires the shared secret for remote requests; `always` requires it even on loopback; `off` disables auth entirely. The secret is taken from `DEVLOG_AUTH_TOKEN`, or auto-generated once into `<data_dir>/auth.token` (chmod 600) — print it with `devlog --print-token`.
+Controlled by `DEVLOG_AUTH`: `auto` (default) trusts loopback and requires the shared secret for remote requests; `private-vpn` does the same and additionally trusts private-VPN peers by identity (below); `always` requires it even on loopback; `off` disables auth entirely. The secret is taken from `DEVLOG_AUTH_TOKEN`, or auto-generated once into `<data_dir>/auth.token` (chmod 600) — print it with `devlog --print-token`.
 
 | Method | Path | Notes |
 |---|---|---|
@@ -284,6 +284,7 @@ Mechanics (see `auth.py`):
 - Session = `<unix-expiry>.<hmac-sha256>` cookie (`devlog_session`, 30 days, HttpOnly, SameSite=Lax). The signing key is the shared secret itself, so sessions survive restarts as long as the secret does.
 - Non-browser clients authenticate every request with `Authorization: Bearer <token>` (or `X-Devlog-Token: <token>`), constant-time compared. `devlog-mcp` sends the Bearer header automatically when `DEVLOG_AUTH_TOKEN` is set in its environment.
 - Open paths (no auth): `/`, `/health`, `/sw.js`, `/manifest.json`, `/favicon.ico`, `/apple-touch-icon.png`, and the `/static/*`, `/share/*`, `/shares/*`, `/auth/*` prefixes — the PWA shell, share links, and the auth endpoints; every data endpoint (including `/docs` and `/openapi.json`) requires auth when it isn't loopback-trusted.
+- `private-vpn` mode (see `vpn.py`): a request that has no valid cookie or token is still allowed when its source address is (a) inside a network listed in `DEVLOG_VPN_CIDRS`, or (b) a Tailscale peer whose user login is in `DEVLOG_VPN_USERS` or which carries a tag in `DEVLOG_VPN_TAGS`. For (b) the backend asks the local tailscaled (`/localapi/v0/whois` over its unix socket when present, else `tailscale whois --json <ip>`); results are cached per address (60 s hits, 10 s misses) and the check runs in the threadpool. Tagged devices never match a user entry. With none of the three variables set the mode trusts nobody beyond loopback. `/auth/status` reports `required:false` for a trusted peer, so the web UI never shows the login overlay.
 - Unauthenticated requests get a 401 JSON response. The web UI reacts by showing a login overlay that POSTs the token to `/auth/login`; there is no server-rendered login page, so the service worker never caches a login redirect as the app shell.
 
 ---
@@ -522,8 +523,11 @@ The `project` argument on each tool accepts either an int id or a slug; the serv
 | `DEVLOG_PORT` | `8765` | bind port |
 | `DEVLOG_DATA_DIR` | `$XDG_DATA_HOME/devlog` or `~/.local/share/devlog` | SQLite + backups dir |
 | `DEVLOG_BASE_URL` | `http://127.0.0.1:8765` | used by `devlog-mcp` and the Linux app |
-| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback + requires the token remotely; `always` everywhere; `off` disables (§4.11) |
+| `DEVLOG_AUTH` | `auto` | `auto` trusts loopback + requires the token remotely; `private-vpn` also trusts VPN peers; `always` everywhere; `off` disables (§4.11) |
 | `DEVLOG_AUTH_TOKEN` | *(auto-generated to `auth.token`)* | shared secret for remote access (§4.11); `devlog-mcp` reads it too |
+| `DEVLOG_VPN_USERS` / `DEVLOG_VPN_TAGS` | *(empty)* | `private-vpn` mode: Tailscale logins / tags trusted without the secret, comma-separated (§4.11) |
+| `DEVLOG_VPN_CIDRS` | *(empty)* | `private-vpn` mode: networks trusted without the secret (§4.11) |
+| `DEVLOG_TAILSCALE_SOCKET` / `DEVLOG_TAILSCALE_BIN` | *(auto-detected)* | where to reach tailscaled for the `private-vpn` identity lookup |
 | `DRAWIO_VERSION` | `v30.0.2` | tag used by `scripts/install-drawio.sh` |
 
 ---
